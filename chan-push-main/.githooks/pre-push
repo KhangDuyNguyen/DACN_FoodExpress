@@ -1,0 +1,19 @@
+#!/bin/sh
+# Chan push truc tiep len main/master tu may nay.
+# Cai dat 1 lan (chay trong thu muc repo):  git config core.hooksPath .githooks
+# Khan cap (chi chu repo): git push --no-verify
+
+while read local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master)
+      echo ""
+      echo "CHAN PUSH: khong duoc push thang len '${remote_ref#refs/heads/}'."
+      echo "Lam tren nhanh rieng roi mo Pull Request:"
+      echo "  git checkout -b feature/ten-viec"
+      echo "  git push -u origin feature/ten-viec"
+      echo ""
+      exit 1
+      ;;
+  esac
+done
+exit 0
