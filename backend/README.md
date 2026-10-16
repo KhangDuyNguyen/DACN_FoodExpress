@@ -7,8 +7,10 @@ Java 21, Spring Boot 3.5, Maven, MySQL + Flyway, SQL thuần.
 ```bash
 docker compose up -d mysql      # ở thư mục gốc repo
 cd backend
-mvn spring-boot:run
+mvnw.cmd spring-boot:run        # Windows (macOS/Linux: ./mvnw spring-boot:run)
 ```
+
+Chỉ cần cài JDK 21. Lần chạy đầu `mvnw` tự tải Maven và thư viện nên chờ vài phút.
 
 - Health: http://localhost:8080/api/health
 - Swagger UI: http://localhost:8080/swagger-ui.html
