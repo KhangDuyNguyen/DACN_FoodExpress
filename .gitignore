@@ -1,0 +1,40 @@
+# Bien moi truong va bi mat
+.env
+.env.*
+!.env.example
+*.pem
+*.jks
+*.keystore
+serviceAccountKey.json
+firebase-adminsdk*.json
+
+# IDE / he dieu hanh
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Backend (Maven)
+backend/target/
+*.class
+*.log
+
+# Web (Node)
+node_modules/
+web/dist/
+web/.vite/
+
+# AI service (Python)
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Android
+android/**/build/
+android/.gradle/
+android/local.properties
+android/**/*.apk
+android/**/*.aab

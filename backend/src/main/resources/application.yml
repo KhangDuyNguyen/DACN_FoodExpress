@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: food-delivery-backend
+  datasource:
+    # Mac dinh khop voi docker-compose.yml o thu muc goc (MySQL root / change_me).
+    url: ${DB_URL:jdbc:mysql://localhost:3306/fooddelivery?serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:change_me}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Cho phep chay migration co so phien ban nho hon khi dong doi them file sau (tranh loi validate khi pull code)
+    out-of-order: true
+
+app:
+  cors:
+    allowed-origins: http://localhost:5173
+  jwt:
+    # Dat bien moi truong JWT_SECRET (>= 32 ky tu). KHONG commit gia tri that len Git.
+    secret: ${JWT_SECRET:}
+    expiration-minutes: 1440
+  ai-service-url: ${AI_SERVICE_URL:http://localhost:8000}
