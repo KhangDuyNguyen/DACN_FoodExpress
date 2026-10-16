@@ -40,7 +40,7 @@ food-delivery/
 
 ## Chạy lần đầu
 
-Cần cài: JDK 21, Maven (hoặc dùng IntelliJ IDEA), Node.js 22, Docker Desktop, Python 3.12, Android Studio (cho An).
+Cần cài: JDK 21, Node.js (22 trở lên), Docker Desktop, Python 3.12, Android Studio (cho An). Không cần cài Maven, backend đã có sẵn `mvnw` (tự tải Maven ở lần chạy đầu).
 
 1. Tạo file biến môi trường (không commit file `.env`):
    ```bash
@@ -53,7 +53,8 @@ Cần cài: JDK 21, Maven (hoặc dùng IntelliJ IDEA), Node.js 22, Docker Deskt
 3. Chạy backend (Flyway tự tạo 41 bảng ở lần chạy đầu):
    ```bash
    cd backend
-   mvn spring-boot:run
+   mvnw.cmd spring-boot:run        # Windows
+   ./mvnw spring-boot:run          # macOS / Linux
    ```
    Hoặc mở thư mục `backend` bằng IntelliJ và chạy `FoodDeliveryApplication`.
    - Kiểm tra: http://localhost:8080/api/health
