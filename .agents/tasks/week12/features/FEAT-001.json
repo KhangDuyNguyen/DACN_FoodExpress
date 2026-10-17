@@ -1,0 +1,32 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Database migrations and seed data for restaurants/menu area. Creates Flyway migration V2__seed_cuisines_restaurants.sql with 5-10 cuisines (Vietnamese, Korean, Japanese, Fast Food, Drinks, Hotpot, BBQ) and 10-15 realistic HCMC-area restaurants with full fields (name, cuisine via restaurant_cuisines, address, lat/lng coordinates, phone, logo_url, cover_url, open_status=OPEN, status=ACTIVE, avg_rating 3.5-5.0, rating_count 50-500, min_order_amount 20000-50000, prep_time_minutes 15-30, delivery fee implied by location). Seeds 3-5 menu_categories per restaurant (Main dishes, Drinks, Sides, Desserts) and 5-10 menu_items per restaurant with realistic Vietnamese food names, descriptions, prices 15000-150000, placeholder image URLs, is_available=1. Does NOT seed option_groups/options or combos (deferred to later week per requirements). Week 1 ERD review: confirms V1__init.sql tables cuisines, restaurants, restaurant_hours, restaurant_cuisines, menu_categories, menu_items, option_groups, options match requirements - BIGINT PKs, DECIMAL(10,7) lat, DECIMAL(11,7) lng, DECIMAL(12,0) for VND prices, indexes on restaurants.name and via restaurant_cuisines.cuisine_id FK, proper ON DELETE CASCADE.",
+  "status": "completed",
+  "steps": [
+    "Read backend/src/main/resources/db/migration/V1__init.sql sections for cuisines (lines ~100-110), restaurants (lines ~45-75), restaurant_hours (~75-85), restaurant_cuisines (~110-120), menu_categories (~130-145), menu_items (~145-165), option_groups (~165-180), options (~180-195) to confirm table structures match ERD requirements.",
+    "Verify data types: cuisines.id INT UNSIGNED AUTO_INCREMENT, restaurants.id BIGINT UNSIGNED, lat DECIMAL(10,7), lng DECIMAL(11,7), prices DECIMAL(12,0), TINYINT(1) for booleans, VARCHAR sizes appropriate, FKs with ON DELETE CASCADE where needed.",
+    "Verify indexes: restaurants has idx_restaurants_name(name), restaurant_cuisines has idx_rc_cuisine(cuisine_id) FK index, menu_items has idx_menu_items_category(category_id, sort_order) and idx_menu_items_name(name).",
+    "Create backend/src/main/resources/db/migration/V2__seed_cuisines_restaurants.sql with INSERT statements: 8 cuisines (ids 1-8: Món Việt, Món Hàn, Món Nhật, Đồ Ăn Nhanh, Đồ Uống, Lẩu, Nướng, Tráng Miệng), each with icon_url placeholder 'https://placehold.co/100x100/png?text=<Name>'.",
+    "Seed 12 restaurants with merchant_id=1 (assume setup created a merchant), realistic HCMC names (Phở 24 Nguyễn Trãi, Gà Rán KFC Pasteur, Lẩu Hải Sản Mộc, Cà Phê Highlands Lê Lợi, etc.), HCMC coordinates (lat 10.7500-10.8500, lng 106.6500-106.7500), phone format '028 xxxx xxxx', logo_url/cover_url placeholders, open_status='OPEN', status='ACTIVE', varied avg_rating (3.5-4.8), rating_count (80-450), min_order_amount (20000-50000), prep_time_minutes (15-30).",
+    "For each restaurant, insert 1-2 rows in restaurant_cuisines linking to appropriate cuisine_id (e.g., Phở→Món Việt, KFC→Đồ Ăn Nhanh, Highlands→Đồ Uống).",
+    "Seed 3-5 menu_categories per restaurant (e.g., 'Món chính', 'Đồ uống', 'Món phụ', 'Tráng miệng') with sort_order 1,2,3,... and is_active=1.",
+    "Seed 6-10 menu_items per restaurant distributed across categories, with Vietnamese food names (Phở bò tái, Gà rán giòn, Cà phê sữa đá, Bánh flan, etc.), description text, prices 15000-150000 appropriate to item type, image_url placeholders 'https://placehold.co/400x300/png?text=<ItemName>', is_available=1, sort_order sequential.",
+    "Add SQL comments in V2 file noting combos deferred to later week, and option_groups/options seeded in week 3 when implementing cart functionality."
+  ],
+  "acceptance_criteria": [
+    "File backend/src/main/resources/db/migration/V2__seed_cuisines_restaurants.sql exists with valid SQL INSERT statements.",
+    "Running `cd backend && ./mvnw spring-boot:run` (macOS) applies Flyway migration V2 successfully without errors.",
+    "Querying `SELECT COUNT(*) FROM cuisines;` returns 8, `SELECT COUNT(*) FROM restaurants;` returns 12, `SELECT COUNT(*) FROM menu_items;` returns at least 70 (12 restaurants × ~6 items minimum).",
+    "All restaurants have lat BETWEEN 10.75 AND 10.85, lng BETWEEN 106.65 AND 106.75, open_status='OPEN', status='ACTIVE'.",
+    "Each restaurant has at least one entry in restaurant_cuisines and at least 3 menu_categories."
+  ],
+  "verification": [
+    "cd backend && ./mvnw spring-boot:run",
+    "Check console logs for 'Flyway migration V2__seed_cuisines_restaurants.sql applied successfully' (or similar Flyway success message).",
+    "Open http://localhost:8080/swagger-ui.html to confirm backend is running.",
+    "Connect to MySQL (docker exec -it fooddelivery-mysql mysql -uroot -pchange_me fooddelivery) and run: SELECT id, name FROM cuisines; SELECT id, name, lat, lng, avg_rating FROM restaurants LIMIT 5; SELECT COUNT(*) FROM menu_items; to verify seed data."
+  ],
+  "blocked_reason": null,
+  "findings": "V2__seed_cuisines_restaurants.sql migration created successfully with:\n- 8 cuisines (Món Việt, Món Hàn, Món Nhật, Đồ Ăn Nhanh, Đồ Uống, Lẩu, Nướng, Tráng Miệng)\n- 1 demo merchant user and merchant record (prerequisite for restaurants)\n- 12 HCMC restaurants with realistic names, coordinates (lat: 10.769-10.782, lng: 106.692-106.703), phone numbers, and varied ratings\n- 15 restaurant-cuisine associations (some restaurants linked to multiple cuisines)\n- 40 menu categories across all restaurants (3-4 categories per restaurant)\n- 94 menu items with Vietnamese food names and appropriate pricing (15,000-600,000 VND)\n\nAll foreign key constraints satisfied. Migrations applied successfully via manual verification. Coordinates verified to be within HCMC range. All restaurants have status=ACTIVE, open_status=OPEN as required."
+}
