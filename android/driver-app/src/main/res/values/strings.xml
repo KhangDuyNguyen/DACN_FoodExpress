@@ -1,4 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Food Express Driver</string>
+
+    <string name="splash_food">Food</string>
+    <string name="splash_express">Express</string>
+    <string name="splash_tagline">Giao nhanh - Trao vị ngon</string>
+    <string name="splash_loading">Đang khởi động ứng dụng…</string>
+    <string name="splash_logo_description">Biểu tượng Food Express</string>
+    <string name="splash_illustration_description">Tài xế Food Express đang giao hàng trong thành phố</string>
+
+    <string name="onboarding_skip">Bỏ qua</string>
+    <string name="onboarding_back">Quay lại</string>
+    <string name="onboarding_continue">Tiếp tục</string>
+    <string name="onboarding_start">Bắt đầu ngay</string>
+    <string name="onboarding_orders_title">Nhận đơn nhanh chóng</string>
+    <string name="onboarding_orders_body">Nhận các đơn hàng gần vị trí, phù hợp\nvới tuyến đường của bạn.\nThao tác đơn giản, dễ sử dụng.</string>
+    <string name="onboarding_orders_illustration_description">Tài xế nhận đơn giao hàng mới</string>
+
+    <string name="onboarding_navigation_title">Dẫn đường thông minh</string>
+    <string name="onboarding_navigation_body">Điều hướng chi tiết từng ngã rẽ,\ncập nhật thời gian đến dự kiến\nvà hỗ trợ bằng giọng nói.</string>
+    <string name="onboarding_navigation_illustration_description">Bản đồ dẫn đường dành cho tài xế</string>
+
+    <string name="onboarding_income_title">Theo dõi thu nhập dễ dàng</string>
+    <string name="onboarding_income_body">Xem thống kê thu nhập, lịch sử đơn hàng\nvà hiệu suất làm việc của bạn\nmột cách minh bạch.</string>
+    <string name="onboarding_income_illustration_description">Tài xế theo dõi thu nhập trên điện thoại</string>
+
+    <string name="permissions_title">Cấp quyền để trải nghiệm tốt hơn</string>
+    <string name="permissions_body">Chúng tôi cần một số quyền truy cập\nđể ứng dụng hoạt động ổn định\nvà hỗ trợ bạn trong quá trình giao hàng.</string>
+    <string name="permission_location_title">Vị trí</string>
+    <string name="permission_location_body">Cần quyền truy cập vị trí\nđể nhận đơn và dẫn đường.</string>
+    <string name="permission_notification_title">Thông báo</string>
+    <string name="permission_notification_body">Nhận thông báo đơn hàng\nmới và các cập nhật quan trọng.</string>
+    <string name="permission_camera_title">Camera</string>
+    <string name="permission_camera_body">Hỗ trợ chụp hình xác nhận\ngiao hàng và giấy tờ.</string>
+    <string name="permission_agree">Đồng ý</string>
+    <string name="permission_later">Để sau</string>
+    <string name="login_placeholder_title">Màn hình đăng nhập</string>
+    <string name="login_placeholder_body">Đây là màn hình tạm. Chức năng đăng nhập sẽ được triển khai ở bước sau.</string>
+
 </resources>
