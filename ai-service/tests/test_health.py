@@ -8,7 +8,9 @@ client = TestClient(app)
 def test_health():
     res = client.get("/health")
     assert res.status_code == 200
-    assert res.json() == {"status": "ok"}
+    data = res.json()
+    assert data["status"] == "ok"
+    assert data["service"] == "ai-service"
 
 
 def test_recommend_placeholder():
