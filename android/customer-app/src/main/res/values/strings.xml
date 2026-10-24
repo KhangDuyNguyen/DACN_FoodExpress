@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Food Express Customer</string>
+    <string name="test_screen_a_title">Customer - Màn hình thử nghiệm A</string>
+    <string name="test_screen_b_title">Customer - Màn hình thử nghiệm B</string>
+    <string name="test_navigate_to_b">Đi đến màn hình B</string>
+    <string name="test_navigate_to_a">Quay lại màn hình A</string>
+    <string name="test_image_description">Ảnh Food Express cục bộ dùng để kiểm thử Coil</string>
+</resources>
