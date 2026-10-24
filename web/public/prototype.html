@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FoodExpress - Week 2 Design Prototype</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-orange: #FF6B35;
+            --primary-orange-dark: #E85D2F;
+            --primary-orange-light: #FF8555;
+            --teal: #4ECDC4;
+            --white: #FFFFFF;
+            --gray-50: #F5F5F5;
+            --gray-200: #E0E0E0;
+            --gray-500: #A0AEC0;
+            --gray-700: #4A5568;
+            --gray-900: #1A202C;
+            --success: #48BB78;
+            --error: #F56565;
+        }
+
+        body {
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-900);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Header */
+        .header {
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-200);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .header-logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-orange);
+        }
+
+        .header-search {
+            flex: 1;
+            margin: 0 20px;
+            display: flex;
+        }
+
+        .header-search input {
+            flex: 1;
+            height: 40px;
+            padding: 0 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .header-cart {
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        /* Filter Section */
+        .filter-section {
+            background: var(--white);
+            padding: 12px 16px;
+            overflow-x: auto;
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .filter-chip {
+            padding: 8px 16px;
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: 20px;
+            font-size: 14px;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 150ms ease;
+        }
+
+        .filter-chip:hover {
+            background: var(--gray-200);
+        }
+
+        .filter-chip.active {
+            background: var(--primary-orange);
+            color: var(--white);
+            border-color: var(--primary-orange);
+        }
+
+        /* Restaurant Card */
+        .restaurant-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+
+        .restaurant-card {
+            background: var(--white);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 150ms ease;
+            cursor: pointer;
+        }
+
+        .restaurant-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+
+        .restaurant-card-image {
+            width: 100%;
+            height: 160px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-size: cover;
+            position: relative;
+        }
+
+        .restaurant-card-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.6);
+            color: var(--white);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .restaurant-card-content {
+            padding: 12px;
+        }
+
+        .restaurant-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .restaurant-card-name {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .restaurant-card-rating {
+            font-size: 14px;
+            color: var(--primary-orange);
+        }
+
+        .restaurant-card-meta {
+            font-size: 12px;
+            color: var(--gray-700);
+            margin-bottom: 8px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .restaurant-card-footer {
+            font-size: 12px;
+            color: var(--success);
+            font-weight: 500;
+        }
+
+        /* Merchant Login */
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #FF6B35 0%, #FF8555 100%);
+        }
+
+        .login-card {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 32px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+
+        .login-card-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .login-card-logo {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--primary-orange);
+            margin-bottom: 12px;
+        }
+
+        .login-card-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .login-card-subtitle {
+            font-size: 14px;
+            color: var(--gray-700);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .form-input {
+            width: 100%;
+            height: 44px;
+            padding: 12px 16px;
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 150ms ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-orange);
+            box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+        }
+
+        .forgot-password {
+            text-align: right;
+            font-size: 12px;
+            color: var(--primary-orange);
+            cursor: pointer;
+            margin-bottom: 24px;
+        }
+
+        .btn {
+            width: 100%;
+            height: 44px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 150ms ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+            color: var(--white);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+            transform: scale(1.02);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        .signup-link {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 14px;
+        }
+
+        .signup-link a {
+            color: var(--primary-orange);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        /* Menu Items Grid */
+        .menu-items {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
+        }
+
+        .menu-item-card {
+            background: var(--white);
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 12px;
+            transition: all 150ms ease;
+        }
+
+        .menu-item-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+
+        .menu-item-image {
+            width: 100%;
+            height: 150px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .menu-item-name {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .menu-item-price {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary-orange);
+            margin-bottom: 8px;
+        }
+
+        .menu-item-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .menu-item-btn {
+            flex: 1;
+            height: 36px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 150ms ease;
+        }
+
+        .menu-item-btn-add {
+            background: var(--primary-orange);
+            color: var(--white);
+        }
+
+        .menu-item-btn-add:hover {
+            background: var(--primary-orange-dark);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 16px;
+            border-bottom: 2px solid var(--gray-200);
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+
+        .tab {
+            padding: 12px 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            color: var(--gray-700);
+            border-bottom: 3px solid transparent;
+            transition: all 150ms ease;
+            white-space: nowrap;
+        }
+
+        .tab.active {
+            color: var(--primary-orange);
+            border-bottom-color: var(--primary-orange);
+        }
+
+        .tab:hover {
+            color: var(--primary-orange);
+        }
+
+        /* Demo Section */
+        .demo-section {
+            margin-bottom: 40px;
+        }
+
+        .demo-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--primary-orange);
+        }
+
+        .page-section {
+            display: none;
+        }
+
+        .page-section.active {
+            display: block;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .nav-btn {
+            padding: 8px 16px;
+            background: var(--primary-orange);
+            color: var(--white);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 150ms ease;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary-orange-dark);
+        }
+
+        .nav-btn.inactive {
+            background: var(--gray-200);
+            color: var(--gray-500);
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 768px) {
+            .restaurant-list {
+                grid-template-columns: 1fr;
+            }
+
+            .menu-items {
+                grid-template-columns: 1fr;
+            }
+
+            .header-search {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="margin: 20px 0; color: var(--primary-orange);">🍽️ FoodExpress - Week 2 Design Prototype</h1>
+        <p style="margin-bottom: 20px; color: var(--gray-700);">This is an interactive HTML prototype showing the design for Week 2. Use the navigation buttons below to switch between pages.</p>
+
+        <div class="nav-buttons">
+            <button class="nav-btn" onclick="showPage('restaurant-list')">🏪 Restaurant List</button>
+            <button class="nav-btn" onclick="showPage('restaurant-detail')">🍴 Restaurant Detail</button>
+            <button class="nav-btn" onclick="showPage('merchant-login')">🔐 Merchant Login</button>
+            <button class="nav-btn" onclick="showPage('merchant-menu')">📋 Menu Management</button>
+        </div>
+
+        <!-- Restaurant List Page -->
+        <div id="restaurant-list" class="page-section active">
+            <h2 class="demo-title">🏪 Restaurant List / Home Page</h2>
+            <div class="header">
+                <div class="header-logo">FoodExpress</div>
+                <div class="header-search">
+                    <input type="text" placeholder="Tìm quán...">
+                </div>
+                <div class="header-cart">🛒 <span style="font-size: 12px; position: relative; right: 8px;">0</span></div>
+            </div>
+
+            <div class="filter-section">
+                <div class="filter-chip active">Tất cả</div>
+                <div class="filter-chip">Món Việt</div>
+                <div class="filter-chip">Món Hàn</div>
+                <div class="filter-chip">Đồ Ăn Nhanh</div>
+                <div class="filter-chip">Đồ Uống</div>
+            </div>
+
+            <div class="restaurant-list">
+                <div class="restaurant-card">
+                    <div class="restaurant-card-image">
+                        <div class="restaurant-card-badge">OPEN</div>
+                    </div>
+                    <div class="restaurant-card-content">
+                        <div class="restaurant-card-header">
+                            <div class="restaurant-card-name">Phở 24</div>
+                            <div class="restaurant-card-rating">⭐ 4.5</div>
+                        </div>
+                        <div class="restaurant-card-meta">
+                            <span>Phở, Bún</span>
+                            <span>📍 2.5km</span>
+                            <span>🕐 20-30 phút</span>
+                        </div>
+                        <div class="restaurant-card-footer">Min: 30,000₫</div>
+                    </div>
+                </div>
+
+                <div class="restaurant-card">
+                    <div class="restaurant-card-image" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"></div>
+                    <div class="restaurant-card-content">
+                        <div class="restaurant-card-header">
+                            <div class="restaurant-card-name">KFC Pasteur</div>
+                            <div class="restaurant-card-rating">⭐ 4.2</div>
+                        </div>
+                        <div class="restaurant-card-meta">
+                            <span>Fast Food</span>
+                            <span>📍 1.8km</span>
+                            <span>🕐 15 phút</span>
+                        </div>
+                        <div class="restaurant-card-footer">Min: 50,000₫</div>
+                    </div>
+                </div>
+
+                <div class="restaurant-card">
+                    <div class="restaurant-card-image" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"></div>
+                    <div class="restaurant-card-content">
+                        <div class="restaurant-card-header">
+                            <div class="restaurant-card-name">Lẩu Mộc</div>
+                            <div class="restaurant-card-rating">⭐ 4.6</div>
+                        </div>
+                        <div class="restaurant-card-meta">
+                            <span>Lẩu</span>
+                            <span>📍 3.2km</span>
+                            <span>🕐 30 phút</span>
+                        </div>
+                        <div class="restaurant-card-footer">Min: 100,000₫</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Restaurant Detail Page -->
+        <div id="restaurant-detail" class="page-section">
+            <h2 class="demo-title">🍴 Restaurant Detail & Menu</h2>
+            
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 250px; border-radius: 12px; margin-bottom: 20px; position: relative; display: flex; align-items: flex-end; justify-content: flex-start; padding: 20px;">
+                <div style="background: var(--white); width: 60px; height: 60px; border-radius: 12px; margin-right: 20px; margin-bottom: -30px;"></div>
+                <div style="color: var(--white);">
+                    <h3 style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">Phở 24 Nguyễn Trãi</h3>
+                    <p>⭐ 4.5 (320 reviews) • 🕐 7:00 - 22:00</p>
+                </div>
+            </div>
+
+            <div style="background: var(--white); padding: 16px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid var(--primary-orange);">
+                <p><strong>📍 Address:</strong> 5 Nguyễn Trãi, Quận 1</p>
+                <p><strong>📞 Phone:</strong> 028 3925 6699</p>
+                <p><strong>🕐 Hours:</strong> 7:00 - 22:00 (Every day)</p>
+                <p><strong>Min order:</strong> 30,000₫</p>
+            </div>
+
+            <div class="tabs">
+                <div class="tab active">Món chính</div>
+                <div class="tab">Đồ uống</div>
+                <div class="tab">Tráng miệng</div>
+            </div>
+
+            <div class="menu-items">
+                <div class="menu-item-card">
+                    <div class="menu-item-image"></div>
+                    <div class="menu-item-name">Phở Bò Tái</div>
+                    <div class="menu-item-price">45,000₫</div>
+                    <div class="menu-item-actions">
+                        <button class="menu-item-btn menu-item-btn-add">+ Thêm</button>
+                    </div>
+                </div>
+
+                <div class="menu-item-card">
+                    <div class="menu-item-image" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"></div>
+                    <div class="menu-item-name">Phở Gà</div>
+                    <div class="menu-item-price">40,000₫</div>
+                    <div class="menu-item-actions">
+                        <button class="menu-item-btn menu-item-btn-add">+ Thêm</button>
+                    </div>
+                </div>
+
+                <div class="menu-item-card">
+                    <div class="menu-item-image" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"></div>
+                    <div class="menu-item-name">Bún Bò</div>
+                    <div class="menu-item-price">50,000₫</div>
+                    <div class="menu-item-actions">
+                        <button class="menu-item-btn menu-item-btn-add">+ Thêm</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Merchant Login Page -->
+        <div id="merchant-login" class="page-section">
+            <h2 class="demo-title">🔐 Merchant Login</h2>
+            <div class="login-container" style="min-height: 400px; border-radius: 12px;">
+                <div class="login-card">
+                    <div class="login-card-header">
+                        <div class="login-card-logo">FoodExpress</div>
+                        <h2 class="login-card-title">Đăng nhập cửa hàng</h2>
+                        <p class="login-card-subtitle">Dành cho chủ quán / nhân viên</p>
+                    </div>
+
+                    <form>
+                        <div class="form-group">
+                            <label class="form-label">Email hoặc Tên đăng nhập</label>
+                            <input type="text" class="form-input" placeholder="nhập email...">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Mật khẩu</label>
+                            <input type="password" class="form-input" placeholder="••••••••">
+                        </div>
+
+                        <div class="forgot-password">Quên mật khẩu?</div>
+
+                        <button type="button" class="btn btn-primary">Đăng nhập</button>
+
+                        <div class="signup-link">
+                            Chưa có tài khoản? <a href="#">Đăng ký tại đây</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Merchant Menu Management Page -->
+        <div id="merchant-menu" class="page-section">
+            <h2 class="demo-title">📋 Menu Management</h2>
+            
+            <div style="background: var(--primary-orange); color: var(--white); padding: 12px 16px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <span style="font-weight: 600;">← Quản lý Menu - Phở 24</span>
+                <div style="display: flex; gap: 12px;">
+                    <button class="nav-btn" style="background: var(--white); color: var(--primary-orange); margin: 0;">+ Category</button>
+                    <button class="nav-btn" style="margin: 0;">+ Item</button>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 3fr; gap: 20px;">
+                <!-- Sidebar -->
+                <div style="background: var(--gray-50); border-right: 1px solid var(--gray-200); border-radius: 8px; padding: 0; overflow-y: auto; max-height: 400px;">
+                    <div style="padding: 12px 16px; border-bottom: 1px solid var(--gray-200); cursor: pointer; background: var(--primary-orange); color: var(--white); font-weight: 600;">Món chính</div>
+                    <div style="padding: 12px 16px; border-bottom: 1px solid var(--gray-200); cursor: pointer; color: var(--gray-700);">Đồ uống</div>
+                    <div style="padding: 12px 16px; border-bottom: 1px solid var(--gray-200); cursor: pointer; color: var(--gray-700);">Tráng miệng</div>
+                </div>
+
+                <!-- Content -->
+                <div>
+                    <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Món chính <span style="font-size: 14px; color: var(--gray-700);">(5 items)</span></h3>
+                    <div style="border-bottom: 1px solid var(--gray-200); margin-bottom: 20px; padding-bottom: 12px;">
+                        <button style="margin-right: 12px; padding: 6px 12px; background: transparent; color: var(--primary-orange); border: 1px solid var(--primary-orange); border-radius: 4px; cursor: pointer;">Edit</button>
+                        <button style="padding: 6px 12px; background: transparent; color: var(--error); border: 1px solid var(--error); border-radius: 4px; cursor: pointer;">Delete</button>
+                    </div>
+
+                    <div class="menu-items">
+                        <div class="menu-item-card">
+                            <div class="menu-item-image"></div>
+                            <div class="menu-item-name">Phở Bò Tái</div>
+                            <div style="font-size: 14px; margin-bottom: 8px;"><strong>45,000₫</strong> <span style="background: var(--success); color: var(--white); padding: 2px 8px; border-radius: 4px; font-size: 12px;">Available</span></div>
+                            <div class="menu-item-actions">
+                                <button class="menu-item-btn" style="background: #E7F4F8; color: var(--primary-orange);">Edit</button>
+                                <button class="menu-item-btn" style="background: #FFE7E7; color: var(--error);">Delete</button>
+                            </div>
+                        </div>
+
+                        <div class="menu-item-card">
+                            <div class="menu-item-image" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"></div>
+                            <div class="menu-item-name">Phở Gà</div>
+                            <div style="font-size: 14px; margin-bottom: 8px;"><strong>40,000₫</strong> <span style="background: var(--success); color: var(--white); padding: 2px 8px; border-radius: 4px; font-size: 12px;">Available</span></div>
+                            <div class="menu-item-actions">
+                                <button class="menu-item-btn" style="background: #E7F4F8; color: var(--primary-orange);">Edit</button>
+                                <button class="menu-item-btn" style="background: #FFE7E7; color: var(--error);">Delete</button>
+                            </div>
+                        </div>
+
+                        <div class="menu-item-card">
+                            <div class="menu-item-image" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"></div>
+                            <div class="menu-item-name">Bún Bò</div>
+                            <div style="font-size: 14px; margin-bottom: 8px;"><strong>50,000₫</strong> <span style="background: var(--gray-500); color: var(--white); padding: 2px 8px; border-radius: 4px; font-size: 12px;">Out of stock</span></div>
+                            <div class="menu-item-actions">
+                                <button class="menu-item-btn" style="background: #E7F4F8; color: var(--primary-orange);">Edit</button>
+                                <button class="menu-item-btn" style="background: #FFE7E7; color: var(--error);">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="width: 100%; height: 44px; border: 2px dashed var(--gray-200); background: transparent; border-radius: 8px; color: var(--gray-500); font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 24px; transition: all 150ms ease;" onmouseover="this.style.borderColor='var(--primary-orange)'" onmouseout="this.style.borderColor='var(--gray-200)'">
+                        + Add item to category
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showPage(pageId) {
+            // Hide all pages
+            document.querySelectorAll('.page-section').forEach(el => {
+                el.classList.remove('active');
+            });
+            // Show selected page
+            document.getElementById(pageId).classList.add('active');
+            // Scroll to top
+            window.scrollTo(0, 0);
+        }
+    </script>
+</body>
+</html>

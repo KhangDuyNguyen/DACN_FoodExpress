@@ -4,6 +4,10 @@ import CustomerLayout from './layouts/CustomerLayout'
 import MerchantLayout from './layouts/MerchantLayout'
 import AdminHome from './pages/admin/AdminHome'
 import CustomerHome from './pages/customer/CustomerHome'
+import RestaurantDetail from './pages/customer/RestaurantDetail'
+import RestaurantList from './pages/customer/RestaurantList'
+import Login from './pages/merchant/Login'
+import MenuManagement from './pages/merchant/MenuManagement'
 import MerchantHome from './pages/merchant/MerchantHome'
 
 // Web gom 3 khu trong 1 project:
@@ -16,9 +20,13 @@ export default function App() {
     <Routes>
       <Route element={<CustomerLayout />}>
         <Route index element={<CustomerHome />} />
+        <Route path="restaurants" element={<RestaurantList />} />
+        <Route path="restaurants/:id" element={<RestaurantDetail />} />
       </Route>
       <Route path="merchant" element={<MerchantLayout />}>
         <Route index element={<MerchantHome />} />
+        <Route path="login" element={<Login />} />
+        <Route path="menu" element={<MenuManagement />} />
       </Route>
       <Route path="admin" element={<AdminLayout />}>
         <Route index element={<AdminHome />} />
