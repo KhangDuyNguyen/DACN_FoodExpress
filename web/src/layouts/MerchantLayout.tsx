@@ -28,6 +28,7 @@ import {
   BellOutlined,
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/useAuth'
 
 const { Header, Sider, Content, Footer } = Layout
 const { Text } = Typography
@@ -37,6 +38,7 @@ export const MerchantLayout: React.FC = () => {
   const [isOpenStore, setIsOpenStore] = useState(true)
   const location = useLocation()
   const navigate = useNavigate()
+  const { logout } = useAuth()
 
   // Xác định active menu key
   const getSelectedKey = () => {
@@ -113,7 +115,8 @@ export const MerchantLayout: React.FC = () => {
       cancelText: 'Hủy',
       okType: 'danger',
       onOk: () => {
-        localStorage.removeItem('token')
+        // logout() xoa ca token lan thong tin user dang giu trong AuthProvider
+        logout()
         message.success('Đã đăng xuất khỏi tài khoản Cửa hàng')
         navigate('/')
       },

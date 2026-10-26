@@ -27,11 +27,10 @@ import Register from './pages/customer/Register'
 import RestaurantDetail from './pages/customer/RestaurantDetail'
 import RestaurantList from './pages/customer/RestaurantList'
 import MenuManagement from './pages/merchant/MenuManagement'
-import MerchantHome from './pages/merchant/MerchantHome'
 
 // Web gom 3 khu trong 1 project:
 //   /          -> khach hang
-//   /merchant  -> dashboard cua hang (chi MERCHANT, ADMIN)
+//   /merchant  -> dashboard cua hang (chi MERCHANT, vi backend chi cho MERCHANT goi /api/merchant/**)
 //   /admin     -> quan tri (chi ADMIN)
 // Moi nguoi them route cua minh vao dung khu (xem README trong tung thu muc pages/).
 export default function App() {
@@ -46,34 +45,30 @@ export default function App() {
         <Route path="restaurants/:id" element={<RestaurantDetail />} />
       </Route>
 
+      {/* TODO(khang): bao Duong dung trang /login chung, file pages/merchant/Login.tsx khong con dung nua */}
+      <Route path="merchant/login" element={<Navigate to="/login" replace />} />
+
       {/* Khu vực Dashboard Cửa hàng */}
-      <Route path="merchant" element={<MerchantLayout />}>
-        <Route index element={<MerchantOverviewPage />} />
-        <Route path="orders" element={<MerchantOrdersPage />} />
-        <Route path="vouchers" element={<MerchantVouchersPage />} />
-        <Route path="revenue" element={<MerchantRevenuePage />} />
-        <Route path="top-dishes" element={<MerchantTopDishesPage />} />
-        <Route path="support" element={<MerchantSupportPage />} />
+      <Route element={<ProtectedRoute roles={['MERCHANT']} />}>
+        <Route path="merchant" element={<MerchantLayout />}>
+          <Route index element={<MerchantOverviewPage />} />
+          <Route path="orders" element={<MerchantOrdersPage />} />
+          <Route path="menu" element={<MenuManagement />} />
+          <Route path="vouchers" element={<MerchantVouchersPage />} />
+          <Route path="revenue" element={<MerchantRevenuePage />} />
+          <Route path="top-dishes" element={<MerchantTopDishesPage />} />
+          <Route path="support" element={<MerchantSupportPage />} />
+        </Route>
       </Route>
 
       {/* Khu vực Quản trị Admin */}
-      <Route path="admin" element={<AdminLayout />}>
-        <Route index element={<AdminOverviewPage />} />
-        <Route path="vouchers" element={<AdminVoucherPage />} />
-        <Route path="merchants-approval" element={<AdminMerchantApprovalPage />} />
-        <Route path="drivers-approval" element={<AdminDriverApprovalPage />} />
-        <Route path="support" element={<AdminSupportPage />} />
-      {/* TODO(khang): bao Duong dung trang /login chung, file pages/merchant/Login.tsx khong con dung nua */}
-      <Route path="merchant/login" element={<Navigate to="/login" replace />} />
-      <Route element={<ProtectedRoute roles={['MERCHANT', 'ADMIN']} />}>
-        <Route path="merchant" element={<MerchantLayout />}>
-          <Route index element={<MerchantHome />} />
-          <Route path="menu" element={<MenuManagement />} />
-        </Route>
-      </Route>
       <Route element={<ProtectedRoute roles={['ADMIN']} />}>
         <Route path="admin" element={<AdminLayout />}>
-          <Route index element={<AdminHome />} />
+          <Route index element={<AdminOverviewPage />} />
+          <Route path="vouchers" element={<AdminVoucherPage />} />
+          <Route path="merchants-approval" element={<AdminMerchantApprovalPage />} />
+          <Route path="drivers-approval" element={<AdminDriverApprovalPage />} />
+          <Route path="support" element={<AdminSupportPage />} />
         </Route>
       </Route>
     </Routes>
