@@ -83,4 +83,91 @@ class SecurityIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value("Sai tài khoản hoặc mật khẩu"));
     }
+
+    // ----- Tuan 3: tai khoan mau (V20261026_01), mat khau chung Demo@12345 -----
+
+    private String loginAndGetToken(String phone) throws Exception {
+        String body = """
+                {"identifier":"%s","password":"Demo@12345"}
+                """.formatted(phone);
+        String response = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).get("token").asText();
+    }
+
+    @Test
+    void seededDemoAccountsCanLoginWithCorrectRole() throws Exception {
+        String[][] accounts = {
+                {"0911000001", "CUSTOMER"}, {"0922000001", "MERCHANT"},
+                {"0933000001", "DRIVER"}, {"0900000001", "ADMIN"}
+        };
+        for (String[] account : accounts) {
+            String token = loginAndGetToken(account[0]);
+            mockMvc.perform(get("/api/users/me").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.role").value(account[1]));
+        }
+    }
+
+    @Test
+    void lockedAccountWithCorrectPasswordReturns403() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"identifier\":\"0911000009\",\"password\":\"Demo@12345\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Tài khoản đã bị khóa"));
+    }
+
+    @Test
+    void cartAndOrdersAreOnlyForCustomer() throws Exception {
+        String merchantToken = loginAndGetToken("0922000001");
+        String driverToken = loginAndGetToken("0933000001");
+
+        mockMvc.perform(get("/api/cart").header("Authorization", "Bearer " + merchantToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/orders").header("Authorization", "Bearer " + driverToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/cart"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void customerCannotCallMerchantOrDriverApi() throws Exception {
+        String token = loginAndGetToken("0911000001");
+        mockMvc.perform(get("/api/merchant/orders").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/driver/x").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    // ----- Tuan 3: loi luon tra ve dang ApiError -----
+
+    @Test
+    void malformedJsonReturns400ApiError() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON).content("{khong phai json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Dữ liệu gửi lên không đúng định dạng"));
+    }
+
+    @Test
+    void wrongParameterTypeReturns400ApiError() throws Exception {
+        mockMvc.perform(get("/api/restaurants").param("cuisine", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    void unknownPathReturns404AndWrongMethodReturns405() throws Exception {
+        String token = loginAndGetToken("0911000001");
+        mockMvc.perform(get("/api/khong-ton-tai").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
+        mockMvc.perform(get("/api/auth/login"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.status").value(405));
+    }
 }
