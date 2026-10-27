@@ -6,6 +6,10 @@ import MerchantLayout from './layouts/MerchantLayout'
 
 // Khách hàng
 import CustomerHome from './pages/customer/CustomerHome'
+import Login from './pages/customer/Login'
+import Register from './pages/customer/Register'
+import RestaurantDetail from './pages/customer/RestaurantDetail'
+import RestaurantList from './pages/customer/RestaurantList'
 
 // Quản trị viên (Admin - Sầm Xuân Điệp)
 import AdminOverviewPage from './pages/admin/AdminOverviewPage'
@@ -14,26 +18,16 @@ import AdminMerchantApprovalPage from './pages/admin/AdminMerchantApprovalPage'
 import AdminDriverApprovalPage from './pages/admin/AdminDriverApprovalPage'
 import AdminSupportPage from './pages/admin/AdminSupportPage'
 
-// Cửa hàng (Merchant - Sầm Xuân Điệp phụ trách các trang đơn realtime, voucher, thống kê)
+// Cửa hàng (Merchant)
+import MerchantHome from './pages/merchant/MerchantHome'
 import MerchantOverviewPage from './pages/merchant/MerchantOverviewPage'
 import MerchantOrdersPage from './pages/merchant/MerchantOrdersPage'
 import MerchantVouchersPage from './pages/merchant/MerchantVouchersPage'
 import MerchantRevenuePage from './pages/merchant/MerchantRevenuePage'
 import MerchantTopDishesPage from './pages/merchant/MerchantTopDishesPage'
 import MerchantSupportPage from './pages/merchant/MerchantSupportPage'
-
-import Login from './pages/customer/Login'
-import Register from './pages/customer/Register'
-import RestaurantDetail from './pages/customer/RestaurantDetail'
-import RestaurantList from './pages/customer/RestaurantList'
 import MenuManagement from './pages/merchant/MenuManagement'
-import MerchantHome from './pages/merchant/MerchantHome'
 
-// Web gom 3 khu trong 1 project:
-//   /          -> khach hang
-//   /merchant  -> dashboard cua hang (chi MERCHANT, ADMIN)
-//   /admin     -> quan tri (chi ADMIN)
-// Moi nguoi them route cua minh vao dung khu (xem README trong tung thu muc pages/).
 export default function App() {
   return (
     <Routes>
@@ -46,7 +40,10 @@ export default function App() {
         <Route path="restaurants/:id" element={<RestaurantDetail />} />
       </Route>
 
-      {/* Khu vực Dashboard Cửa hàng */}
+      {/* Redirect merchant/login → /login */}
+      <Route path="merchant/login" element={<Navigate to="/login" replace />} />
+
+      {/* Khu vực Dashboard Cửa hàng - public pages */}
       <Route path="merchant" element={<MerchantLayout />}>
         <Route index element={<MerchantOverviewPage />} />
         <Route path="orders" element={<MerchantOrdersPage />} />
@@ -56,6 +53,14 @@ export default function App() {
         <Route path="support" element={<MerchantSupportPage />} />
       </Route>
 
+      {/* Khu vực Merchant - yêu cầu đăng nhập */}
+      <Route element={<ProtectedRoute roles={['MERCHANT', 'ADMIN']} />}>
+        <Route path="merchant" element={<MerchantLayout />}>
+          <Route path="home" element={<MerchantHome />} />
+          <Route path="menu" element={<MenuManagement />} />
+        </Route>
+      </Route>
+
       {/* Khu vực Quản trị Admin */}
       <Route path="admin" element={<AdminLayout />}>
         <Route index element={<AdminOverviewPage />} />
@@ -63,18 +68,6 @@ export default function App() {
         <Route path="merchants-approval" element={<AdminMerchantApprovalPage />} />
         <Route path="drivers-approval" element={<AdminDriverApprovalPage />} />
         <Route path="support" element={<AdminSupportPage />} />
-      {/* TODO(khang): bao Duong dung trang /login chung, file pages/merchant/Login.tsx khong con dung nua */}
-      <Route path="merchant/login" element={<Navigate to="/login" replace />} />
-      <Route element={<ProtectedRoute roles={['MERCHANT', 'ADMIN']} />}>
-        <Route path="merchant" element={<MerchantLayout />}>
-          <Route index element={<MerchantHome />} />
-          <Route path="menu" element={<MenuManagement />} />
-        </Route>
-      </Route>
-      <Route element={<ProtectedRoute roles={['ADMIN']} />}>
-        <Route path="admin" element={<AdminLayout />}>
-          <Route index element={<AdminHome />} />
-        </Route>
       </Route>
     </Routes>
   )
