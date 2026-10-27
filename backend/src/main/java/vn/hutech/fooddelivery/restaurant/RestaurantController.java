@@ -4,21 +4,17 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import vn.hutech.fooddelivery.restaurant.dto.CuisineDTO;
-import vn.hutech.fooddelivery.restaurant.dto.RestaurantSummaryDTO;
+import org.springframework.web.bind.annotation.*;
+import vn.hutech.fooddelivery.restaurant.dto.*;
 
 import java.util.List;
 
 /**
- * REST API cho tìm kiếm nhà hàng và loại món ăn.
+ * REST API cho tìm kiếm nhà hàng, chi tiết quán và menu.
  */
 @RestController
 @RequestMapping("/api")
-@Tag(name = "Restaurants", description = "Cuisine and restaurant search APIs")
+@Tag(name = "Restaurants", description = "Cuisine, restaurant search, detail and menu APIs")
 public class RestaurantController {
 
     private final CuisineService cuisineService;
@@ -29,35 +25,17 @@ public class RestaurantController {
         this.restaurantService = restaurantService;
     }
 
-    /**
-     * Lấy danh sách tất cả loại món ăn (cuisines).
-     * <p>
-     * Endpoint này trả về danh sách các loại món như Món Việt, Món Hàn, Đồ Ăn Nhanh, v.v.
-     * để hiển thị bộ lọc trong giao diện người dùng.
-     * </p>
-     */
+    /** Lấy danh sách tất cả loại món ăn. */
     @GetMapping("/cuisines")
     @Operation(summary = "Get all cuisines", description = "Returns list of all cuisine types with icons")
     public ResponseEntity<List<CuisineDTO>> getAllCuisines() {
         return ResponseEntity.ok(cuisineService.getAllCuisines());
     }
 
-    /**
-     * Tìm kiếm nhà hàng với các bộ lọc tùy chọn.
-     * <p>
-     * Hỗ trợ tìm kiếm theo từ khóa, lọc theo loại món ăn, và sắp xếp theo khoảng cách
-     * nếu cung cấp tọa độ người dùng (lat, lng).
-     * </p>
-     *
-     * @param keyword từ khóa tìm kiếm (tùy chọn)
-     * @param cuisine ID loại món ăn để lọc (tùy chọn)
-     * @param lat     vĩ độ người dùng để tính khoảng cách (tùy chọn)
-     * @param lng     kinh độ người dùng để tính khoảng cách (tùy chọn)
-     * @return danh sách nhà hàng phù hợp
-     */
+    /** Tìm kiếm nhà hàng với các bộ lọc tùy chọn. */
     @GetMapping("/restaurants")
     @Operation(summary = "Search restaurants",
-            description = "Search and filter restaurants by keyword, cuisine type, and distance from user location")
+            description = "Search and filter by keyword, cuisine, and distance from user location")
     public ResponseEntity<List<RestaurantSummaryDTO>> searchRestaurants(
             @Parameter(description = "Search keyword (matches restaurant name)")
             @RequestParam(required = false) String keyword,
@@ -71,8 +49,26 @@ public class RestaurantController {
             @Parameter(description = "User longitude for distance-based sorting")
             @RequestParam(required = false) Double lng
     ) {
-        List<RestaurantSummaryDTO> restaurants = restaurantService.searchRestaurants(
-                keyword, cuisine, lat, lng);
-        return ResponseEntity.ok(restaurants);
+        return ResponseEntity.ok(restaurantService.searchRestaurants(keyword, cuisine, lat, lng));
+    }
+
+    /** Lấy chi tiết một nhà hàng theo id. */
+    @GetMapping("/restaurants/{id}")
+    @Operation(summary = "Get restaurant detail",
+            description = "Returns full restaurant info including cuisines and opening hours")
+    public ResponseEntity<RestaurantDetailDTO> getRestaurantById(
+            @Parameter(description = "Restaurant ID") @PathVariable long id
+    ) {
+        return ResponseEntity.ok(restaurantService.getRestaurantById(id));
+    }
+
+    /** Lấy menu đầy đủ của một nhà hàng (categories -> items -> option_groups -> options). */
+    @GetMapping("/restaurants/{id}/menu")
+    @Operation(summary = "Get restaurant menu",
+            description = "Returns full menu: categories with items, each item with option groups and options")
+    public ResponseEntity<MenuDTO> getMenu(
+            @Parameter(description = "Restaurant ID") @PathVariable long id
+    ) {
+        return ResponseEntity.ok(restaurantService.getMenuByRestaurantId(id));
     }
 }
