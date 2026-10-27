@@ -7,6 +7,8 @@ export default function RestaurantList() {
   const [keyword, setKeyword] = useState('')
   const [selectedCuisine, setSelectedCuisine] = useState<number | undefined>()
   const [search, setSearch] = useState('')
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
+  const [gettingLocation, setGettingLocation] = useState(false)
 
   // Lấy danh sách cuisines cho filter
   const { data: cuisines = [] } = useQuery({
@@ -16,12 +18,47 @@ export default function RestaurantList() {
 
   // Lấy danh sách quán với filter
   const { data: restaurants = [], isLoading, isError } = useQuery({
-    queryKey: ['restaurants', search, selectedCuisine],
-    queryFn: () => fetchRestaurants({ keyword: search || undefined, cuisine: selectedCuisine }),
+    queryKey: ['restaurants', search, selectedCuisine, userLocation],
+    queryFn: () => fetchRestaurants({ 
+      keyword: search || undefined, 
+      cuisine: selectedCuisine,
+      lat: userLocation?.lat,
+      lng: userLocation?.lng
+    }),
   })
 
   // Xử lý tìm kiếm (nhấn Enter hoặc click Search)
   const handleSearch = () => setSearch(keyword)
+
+  // Lấy vị trí người dùng
+  const handleNearMe = () => {
+    setGettingLocation(true)
+    if (!navigator.geolocation) {
+      alert('Trình duyệt không hỗ trợ định vị')
+      setGettingLocation(false)
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        })
+        setGettingLocation(false)
+      },
+      (error) => {
+        console.error('Lỗi lấy vị trí:', error)
+        alert('Không thể lấy vị trí của bạn. Vui lòng cho phép truy cập vị trí.')
+        setGettingLocation(false)
+      }
+    )
+  }
+
+  // Xóa filter vị trí
+  const handleClearLocation = () => {
+    setUserLocation(null)
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
@@ -30,7 +67,7 @@ export default function RestaurantList() {
       <h1 className="text-2xl font-bold text-gray-900">Đặt đồ ăn ngon</h1>
       <p className="mt-1 text-gray-500">Tìm quán ngon gần bạn</p>
 
-      {/* Search bar */}
+      {/* Search bar + Quán gần tôi */}
       <div className="mt-4 flex gap-2">
         <input
           type="text"
@@ -46,6 +83,22 @@ export default function RestaurantList() {
         >
           Tìm kiếm
         </button>
+        {!userLocation ? (
+          <button
+            onClick={handleNearMe}
+            disabled={gettingLocation}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-wait disabled:opacity-50"
+          >
+            {gettingLocation ? '⏳' : '📍'} {gettingLocation ? 'Đang lấy...' : 'Gần tôi'}
+          </button>
+        ) : (
+          <button
+            onClick={handleClearLocation}
+            className="flex items-center gap-1.5 rounded-lg border border-orange-500 bg-orange-50 px-4 py-2 text-sm font-medium text-orange-600 hover:bg-orange-100"
+          >
+            ✓ Đang xem gần đây ✕
+          </button>
+        )}
       </div>
 
       {/* Filter cuisines */}
@@ -103,6 +156,7 @@ export default function RestaurantList() {
           <>
             <p className="mb-3 text-sm text-gray-500">
               Tìm thấy <span className="font-semibold text-gray-800">{restaurants.length}</span> quán
+              {userLocation && ' (sắp xếp theo khoảng cách)'}
             </p>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
               {restaurants.map((r) => (

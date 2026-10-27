@@ -19,9 +19,27 @@ public class RestaurantRepository {
         this.jdbc = jdbc;
     }
 
-    /**
-     * Tìm kiếm nhà hàng theo keyword và cuisineId.
-     */
+    // ── Helper: đọc TINYINT(1) an toàn ──────────────────────────────────────
+    // MySQL JDBC driver có thể trả Boolean hoặc Number cho TINYINT(1).
+    // Dùng helper này thay vì cast trực tiếp để tránh ClassCastException.
+    private static boolean toBool(Object val) {
+        if (val == null) return false;
+        if (val instanceof Boolean b) return b;
+        return ((Number) val).intValue() != 0;
+    }
+
+    private static int toInt(Object val) {
+        if (val == null) return 0;
+        return ((Number) val).intValue();
+    }
+
+    private static long toLong(Object val) {
+        if (val == null) return 0L;
+        return ((Number) val).longValue();
+    }
+
+    // ── Search restaurants ────────────────────────────────────────────────────
+
     public List<RestaurantSummaryDTO> search(String keyword, Integer cuisineId) {
         String sql = """
             SELECT
@@ -75,12 +93,9 @@ public class RestaurantRepository {
         ));
     }
 
-    /**
-     * Lấy chi tiết một nhà hàng theo id.
-     * Trả về Optional.empty() nếu không tìm thấy hoặc status != ACTIVE.
-     */
+    // ── Restaurant detail ─────────────────────────────────────────────────────
+
     public Optional<RestaurantDetailDTO> findById(long id) {
-        // Query thông tin cơ bản của quán
         String sql = """
             SELECT r.id, r.name, r.description, r.phone, r.address,
                    r.lat, r.lng, r.logo_url, r.cover_url,
@@ -96,15 +111,11 @@ public class RestaurantRepository {
         if (rows.isEmpty()) return Optional.empty();
 
         Map<String, Object> row = rows.get(0);
-
-        // Lấy danh sách cuisines của quán
         List<CuisineDTO> cuisines = findCuisinesByRestaurantId(id);
-
-        // Lấy giờ mở cửa
         List<RestaurantHoursDTO> hours = findHoursByRestaurantId(id);
 
         return Optional.of(new RestaurantDetailDTO(
-                ((Number) row.get("id")).longValue(),
+                toLong(row.get("id")),
                 (String) row.get("name"),
                 (String) row.get("description"),
                 (String) row.get("phone"),
@@ -114,18 +125,15 @@ public class RestaurantRepository {
                 (String) row.get("logo_url"),
                 (String) row.get("cover_url"),
                 ((Number) row.get("avg_rating")).doubleValue(),
-                ((Number) row.get("rating_count")).intValue(),
-                ((Number) row.get("min_order_amount")).longValue(),
-                ((Number) row.get("prep_time_minutes")).intValue(),
+                toInt(row.get("rating_count")),
+                toLong(row.get("min_order_amount")),
+                toInt(row.get("prep_time_minutes")),
                 (String) row.get("open_status"),
                 cuisines,
                 hours
         ));
     }
 
-    /**
-     * Lấy danh sách cuisines của một nhà hàng.
-     */
     private List<CuisineDTO> findCuisinesByRestaurantId(long restaurantId) {
         String sql = """
             SELECT c.id, c.name, c.icon_url
@@ -143,9 +151,6 @@ public class RestaurantRepository {
                 ));
     }
 
-    /**
-     * Lấy giờ mở cửa của một nhà hàng.
-     */
     private List<RestaurantHoursDTO> findHoursByRestaurantId(long restaurantId) {
         String sql = """
             SELECT day_of_week, open_time, close_time
@@ -162,121 +167,109 @@ public class RestaurantRepository {
                 ));
     }
 
-    /**
-     * Lấy toàn bộ menu của một nhà hàng:
-     * categories -> items -> option_groups -> options.
-     * Dùng một query JOIN lớn để tránh N+1.
-     */
+    // ── Menu ──────────────────────────────────────────────────────────────────
+
     public List<MenuCategoryDTO> findMenuByRestaurantId(long restaurantId) {
         String sql = """
             SELECT
-                mc.id        AS cat_id,
-                mc.name      AS cat_name,
-                mc.sort_order AS cat_sort,
-                mi.id        AS item_id,
-                mi.name      AS item_name,
-                mi.description AS item_desc,
-                mi.price     AS item_price,
-                mi.image_url AS item_image,
-                mi.is_available AS item_available,
-                mi.sort_order AS item_sort,
-                og.id        AS og_id,
-                og.name      AS og_name,
-                og.is_required AS og_required,
-                og.min_select AS og_min,
-                og.max_select AS og_max,
-                og.sort_order AS og_sort,
-                o.id         AS opt_id,
-                o.name       AS opt_name,
-                o.extra_price AS opt_price,
-                o.is_available AS opt_available,
-                o.sort_order AS opt_sort
+                mc.id           AS cat_id,
+                mc.name         AS cat_name,
+                mc.sort_order   AS cat_sort,
+                mi.id           AS item_id,
+                mi.name         AS item_name,
+                mi.description  AS item_desc,
+                mi.price        AS item_price,
+                mi.image_url    AS item_image,
+                CAST(mi.is_available AS UNSIGNED) AS item_available,
+                mi.sort_order   AS item_sort,
+                og.id           AS og_id,
+                og.name         AS og_name,
+                CAST(og.is_required AS UNSIGNED)  AS og_required,
+                og.min_select   AS og_min,
+                og.max_select   AS og_max,
+                og.sort_order   AS og_sort,
+                o.id            AS opt_id,
+                o.name          AS opt_name,
+                o.extra_price   AS opt_price,
+                CAST(o.is_available AS UNSIGNED)  AS opt_available,
+                o.sort_order    AS opt_sort
             FROM menu_categories mc
-            LEFT JOIN menu_items mi      ON mi.category_id = mc.id
-            LEFT JOIN option_groups og   ON og.menu_item_id = mi.id
-            LEFT JOIN options o          ON o.group_id = og.id
+            LEFT JOIN menu_items mi    ON mi.category_id  = mc.id
+            LEFT JOIN option_groups og ON og.menu_item_id = mi.id
+            LEFT JOIN options o        ON o.group_id      = og.id
             WHERE mc.restaurant_id = :restaurantId
               AND mc.is_active = 1
             ORDER BY mc.sort_order, mc.id,
                      mi.sort_order, mi.id,
                      og.sort_order, og.id,
-                     o.sort_order, o.id
+                     o.sort_order,  o.id
             """;
 
         List<Map<String, Object>> rows = jdbc.queryForList(sql,
                 new MapSqlParameterSource("restaurantId", restaurantId));
 
-        // Build cây category -> item -> option_group -> option từ flat rows
-        // Dùng LinkedHashMap để giữ thứ tự insert
-        Map<Long, MenuCategoryDTO> catMap  = new LinkedHashMap<>();
-        Map<Long, MenuItemDTO>     itemMap = new LinkedHashMap<>();
-        Map<Long, OptionGroupDTO>  ogMap   = new LinkedHashMap<>();
-
-        // Temp holders dùng List để tránh immutable record
-        Map<Long, List<OptionDTO>>      ogOptions  = new LinkedHashMap<>();
+        Map<Long, MenuCategoryDTO>     catMap    = new LinkedHashMap<>();
+        Map<Long, MenuItemDTO>         itemMap   = new LinkedHashMap<>();
+        Map<Long, OptionGroupDTO>      ogMap     = new LinkedHashMap<>();
+        Map<Long, List<OptionDTO>>     ogOptions = new LinkedHashMap<>();
         Map<Long, List<OptionGroupDTO>> itemGroups = new LinkedHashMap<>();
-        Map<Long, List<MenuItemDTO>>    catItems   = new LinkedHashMap<>();
+        Map<Long, List<MenuItemDTO>>   catItems  = new LinkedHashMap<>();
 
         for (Map<String, Object> row : rows) {
-            long catId   = ((Number) row.get("cat_id")).longValue();
-            Object itemIdObj = row.get("item_id");
-            Object ogIdObj   = row.get("og_id");
-            Object optIdObj  = row.get("opt_id");
+            long catId = toLong(row.get("cat_id"));
 
-            // Category
             catMap.computeIfAbsent(catId, k -> {
                 catItems.put(k, new ArrayList<>());
                 return new MenuCategoryDTO(k,
                         (String) row.get("cat_name"),
-                        ((Number) row.get("cat_sort")).intValue(),
+                        toInt(row.get("cat_sort")),
                         catItems.get(k));
             });
 
+            Object itemIdObj = row.get("item_id");
             if (itemIdObj == null) continue;
-            long itemId = ((Number) itemIdObj).longValue();
+            long itemId = toLong(itemIdObj);
 
-            // MenuItem
             itemMap.computeIfAbsent(itemId, k -> {
                 itemGroups.put(k, new ArrayList<>());
                 MenuItemDTO item = new MenuItemDTO(k,
                         (String) row.get("item_name"),
                         (String) row.get("item_desc"),
-                        ((Number) row.get("item_price")).longValue(),
+                        toLong(row.get("item_price")),
                         (String) row.get("item_image"),
-                        ((Number) row.get("item_available")).intValue() == 1,
-                        ((Number) row.get("item_sort")).intValue(),
+                        toBool(row.get("item_available")),
+                        toInt(row.get("item_sort")),
                         itemGroups.get(k));
                 catItems.get(catId).add(item);
                 return item;
             });
 
+            Object ogIdObj = row.get("og_id");
             if (ogIdObj == null) continue;
-            long ogId = ((Number) ogIdObj).longValue();
+            long ogId = toLong(ogIdObj);
 
-            // OptionGroup
             ogMap.computeIfAbsent(ogId, k -> {
                 ogOptions.put(k, new ArrayList<>());
                 OptionGroupDTO og = new OptionGroupDTO(k,
                         (String) row.get("og_name"),
-                        ((Number) row.get("og_required")).intValue() == 1,
-                        ((Number) row.get("og_min")).intValue(),
-                        ((Number) row.get("og_max")).intValue(),
-                        ((Number) row.get("og_sort")).intValue(),
+                        toBool(row.get("og_required")),
+                        toInt(row.get("og_min")),
+                        toInt(row.get("og_max")),
+                        toInt(row.get("og_sort")),
                         ogOptions.get(k));
                 itemGroups.get(itemId).add(og);
                 return og;
             });
 
+            Object optIdObj = row.get("opt_id");
             if (optIdObj == null) continue;
-            long optId = ((Number) optIdObj).longValue();
 
-            // Option
             ogOptions.get(ogId).add(new OptionDTO(
-                    optId,
+                    toLong(optIdObj),
                     (String) row.get("opt_name"),
-                    ((Number) row.get("opt_price")).longValue(),
-                    ((Number) row.get("opt_available")).intValue() == 1,
-                    ((Number) row.get("opt_sort")).intValue()
+                    toLong(row.get("opt_price")),
+                    toBool(row.get("opt_available")),
+                    toInt(row.get("opt_sort"))
             ));
         }
 
