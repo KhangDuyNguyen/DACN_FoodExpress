@@ -49,15 +49,12 @@ class DriverProfileIntegrationTest {
     void pendingDriverCanPutThenGetWhileForbiddenFieldsAndApprovedEditsLeaveDatabaseUnchanged() {
         var registration = rest.postForEntity("/api/auth/register", Map.of(
                 "fullName", "Driver Integration", "phone", "0944444444",
-                "password", "test-password-123", "role", "DRIVER"), JsonNode.class);
+                "password", "test-password-123", "role", "DRIVER",
+                "vehicleType", "MOTORBIKE", "licensePlate", "59A1-12345"), JsonNode.class);
         assertEquals(HttpStatus.CREATED, registration.getStatusCode());
         JsonNode auth = registration.getBody();
         assertNotNull(auth);
         long userId = auth.path("user").path("id").asLong();
-        jdbc.update("""
-                INSERT INTO drivers (user_id, vehicle_type, license_plate)
-                VALUES (:userId, 'MOTORBIKE', '59A1-12345')
-                """, Map.of("userId", userId));
         var headers = new HttpHeaders();
         headers.setBearerAuth(auth.path("token").asText());
         headers.setContentType(MediaType.APPLICATION_JSON);

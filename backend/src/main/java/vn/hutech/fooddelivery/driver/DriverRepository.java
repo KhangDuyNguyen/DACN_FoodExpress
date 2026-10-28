@@ -91,6 +91,19 @@ public class DriverRepository {
         return jdbc.update(sql, Map.of("driverId", driverId, "isOnline", isOnline));
     }
 
+    /** Goi trong transaction dang ky cua AuthService; khong tao toa do hay bat Online. */
+    public void insert(long userId, String vehicleType, String licensePlate) {
+        String sql = """
+                INSERT INTO drivers (user_id, vehicle_type, license_plate, status, is_online)
+                VALUES (:userId, :vehicleType, :licensePlate, 'PENDING', 0)
+                """;
+        var params = new MapSqlParameterSource()
+                .addValue("userId", userId)
+                .addValue("vehicleType", vehicleType)
+                .addValue("licensePlate", licensePlate);
+        jdbc.update(sql, params);
+    }
+
     record DriverStatusRow(long id, String approvalStatus, boolean isOnline,
                            BigDecimal lat, BigDecimal lng, LocalDateTime lastLocationAt) {
     }
