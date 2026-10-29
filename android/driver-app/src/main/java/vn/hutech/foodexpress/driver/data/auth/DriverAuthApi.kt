@@ -17,6 +17,25 @@ class DriverLoginRequest(val identifier: String, val password: String)
 
 class DriverLoginResponse(val token: String?, val user: DriverAuthUser?)
 
+class DriverRegisterRequest(
+    val fullName: String,
+    val phone: String,
+    val email: String?,
+    val password: String,
+    val vehicleType: String,
+    val licensePlate: String?,
+) {
+    val role: String = "DRIVER"
+}
+
+// Deliberately omit token: registering does not create a Driver App session.
+class DriverRegisterResponse(val user: DriverAuthUser?)
+
+sealed interface DriverRegisterResult {
+    data object Success : DriverRegisterResult
+    data class Failed(val message: String, val fieldErrors: Map<String, String> = emptyMap()) : DriverRegisterResult
+}
+
 data class DriverAuthUser(
     val id: Long = 0,
     val fullName: String? = null,
@@ -26,6 +45,9 @@ data class DriverAuthUser(
 )
 
 interface DriverAuthApi {
+    @POST("auth/register")
+    suspend fun register(@Body request: DriverRegisterRequest): Response<DriverRegisterResponse>
+
     @POST("auth/login")
     suspend fun login(@Body request: DriverLoginRequest): Response<DriverLoginResponse>
 

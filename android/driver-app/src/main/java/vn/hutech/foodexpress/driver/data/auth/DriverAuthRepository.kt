@@ -24,6 +24,53 @@ class DriverAuthRepository @Inject constructor(
 ) {
     private var memoryToken: String? = null
 
+    suspend fun register(request: DriverRegisterRequest): DriverRegisterResult {
+        val response = try {
+            api.register(request)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: IOException) {
+            return DriverRegisterResult.Failed(
+                "Chưa nhận được xác nhận đăng ký. Vui lòng kiểm tra Internet và thử lại. Nếu tài khoản đã được tạo, hãy đăng nhập.",
+            )
+        } catch (_: Exception) {
+            return DriverRegisterResult.Failed("Không thể xác nhận kết quả đăng ký. Vui lòng thử đăng nhập hoặc thử lại sau.")
+        }
+        if (response.code() == 201) {
+            val user = response.body()?.user
+            return if (user != null && user.id > 0 && user.role == "DRIVER" && user.status == "ACTIVE") {
+                // No JWT is deserialized, stored or assigned to memoryToken in this path.
+                DriverRegisterResult.Success
+            } else {
+                DriverRegisterResult.Failed("Máy chủ đã nhận đăng ký nhưng phản hồi không hợp lệ. Vui lòng thử đăng nhập trước khi gửi lại.")
+            }
+        }
+        val error = response.errorBody()?.use { body ->
+            try { JSONObject(body.string()) } catch (_: Exception) { null }
+        }
+        val fields = mutableMapOf<String, String>()
+        val serverFields = error?.optJSONObject("fieldErrors")
+        val names = mapOf(
+            "fullName" to "fullName", "phone" to "phone", "email" to "email", "password" to "password",
+            "vehicleType" to "vehicleType", "licensePlate" to "licensePlate",
+            "driverVehicleTypeValid" to "vehicleType", "driverLicensePlateValid" to "licensePlate",
+        )
+        names.forEach { (server, form) ->
+            serverFields?.optString(server)?.takeIf { it.isNotBlank() }?.let { fields[form] = it.take(300) }
+        }
+        return when (response.code()) {
+            400 -> DriverRegisterResult.Failed("Vui lòng kiểm tra thông tin đăng ký.", fields)
+            409 -> {
+                val message = error?.optString("message")?.takeIf { it.isNotBlank() }?.take(300)
+                    ?: "Số điện thoại hoặc email đã được đăng ký."
+                if (message.contains("điện thoại", ignoreCase = true)) fields["phone"] = message
+                if (message.contains("email", ignoreCase = true)) fields["email"] = message
+                DriverRegisterResult.Failed(message, fields)
+            }
+            else -> DriverRegisterResult.Failed("Máy chủ tạm thời chưa xử lý được đăng ký. Vui lòng thử lại sau.")
+        }
+    }
+
     suspend fun login(identifier: String, password: String, rememberLogin: Boolean): DriverAuthResult {
         val response = try {
             api.login(DriverLoginRequest(identifier.trim(), password))

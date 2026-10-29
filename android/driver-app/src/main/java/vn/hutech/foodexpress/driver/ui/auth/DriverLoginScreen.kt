@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -71,13 +70,12 @@ import vn.hutech.foodexpress.driver.ui.onboarding.FoodExpressInk
 import vn.hutech.foodexpress.driver.ui.onboarding.FoodExpressMuted
 
 @Composable
-fun DriverLoginScreen(state: DriverAuthUiState, onLogin: (String, String, Boolean) -> Unit, onInputChanged: () -> Unit) {
+fun DriverLoginScreen(state: DriverAuthUiState, onLogin: (String, String, Boolean) -> Unit, onInputChanged: () -> Unit, onRegister: () -> Unit) {
     var identifier by rememberSaveable { mutableStateOf("") }
     // Never put the password in SavedState, preferences or a navigation argument.
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var rememberLogin by rememberSaveable { mutableStateOf(true) }
-    var showRegisterNotice by remember { mutableStateOf(false) }
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val submit = {
@@ -184,19 +182,11 @@ fun DriverLoginScreen(state: DriverAuthUiState, onLogin: (String, String, Boolea
                         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("Chưa có tài khoản?", color = FoodExpressMuted, fontSize = 14.sp)
-                        TextButton(onClick = { showRegisterNotice = true }, enabled = !state.loading) { Text("Đăng ký", fontWeight = FontWeight.SemiBold) }
+                        TextButton(onClick = onRegister, enabled = !state.loading) { Text("Đăng ký", fontWeight = FontWeight.SemiBold) }
                     }
                 }
             }
         }
-    }
-    if (showRegisterNotice) {
-        AlertDialog(
-            onDismissRequest = { showRegisterNotice = false },
-            title = { Text("Đăng ký tài xế") },
-            text = { Text("Chức năng đăng ký sẽ được triển khai ở bước Register A2 tiếp theo.") },
-            confirmButton = { TextButton(onClick = { showRegisterNotice = false }) { Text("Đã hiểu") } },
-        )
     }
 }
 
