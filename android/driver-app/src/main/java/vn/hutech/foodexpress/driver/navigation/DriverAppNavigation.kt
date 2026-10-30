@@ -3,6 +3,9 @@ package vn.hutech.foodexpress.driver.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -19,6 +22,8 @@ import vn.hutech.foodexpress.driver.ui.auth.DriverRegisterScreen
 import vn.hutech.foodexpress.driver.ui.auth.DriverRegisterSuccessScreen
 import vn.hutech.foodexpress.driver.ui.auth.DriverRegisterViewModel
 import vn.hutech.foodexpress.driver.ui.auth.DriverSessionScreen
+import vn.hutech.foodexpress.driver.ui.profile.DriverProfileScreen
+import vn.hutech.foodexpress.driver.ui.profile.DriverProfileViewModel
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverOnboardingScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverPermissionIntroScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverSplashScreen
@@ -33,6 +38,7 @@ private const val ONBOARDING_INCOME_ROUTE = "onboarding-income"
 private const val PERMISSION_INTRO_ROUTE = "permission-intro"
 private const val LOGIN_ROUTE = "login"
 private const val SESSION_ROUTE = "driver-session"
+private const val PROFILE_ROUTE = "driver-profile"
 private const val REGISTER_INTRO_ROUTE = "register-intro"
 private const val REGISTER_ACCOUNT_ROUTE = "register-account"
 private const val REGISTER_VEHICLE_ROUTE = "register-vehicle"
@@ -47,10 +53,27 @@ fun DriverAppNavigation() {
     val state by auth.state.collectAsStateWithLifecycle()
     val register: DriverRegisterViewModel = viewModel()
     val registration by register.state.collectAsStateWithLifecycle()
+    val profile: DriverProfileViewModel = viewModel()
+    val profileState by profile.state.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+    var profileSessionNotice by rememberSaveable { mutableStateOf<String?>(null) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { auth.onResume() }
+
+    LaunchedEffect(currentRoute, state.phase) {
+        if (currentRoute == PROFILE_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED) profile.load()
+        else profile.clear()
+    }
+    LaunchedEffect(profileState.sessionExpired) {
+        if (profileState.sessionExpired) {
+            profileSessionNotice = "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại."
+            auth.logout()
+        }
+    }
+    LaunchedEffect(state.phase) {
+        if (state.phase == DriverAuthPhase.AUTHENTICATED) profileSessionNotice = null
+    }
 
     LaunchedEffect(registration.registered, registration.errorStep, currentRoute) {
         when {
@@ -76,7 +99,7 @@ fun DriverAppNavigation() {
     LaunchedEffect(state.phase, currentRoute) {
         val destination = when {
             currentRoute == LOGIN_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED -> SESSION_ROUTE
-            currentRoute == SESSION_ROUTE && state.phase == DriverAuthPhase.SIGNED_OUT -> LOGIN_ROUTE
+            currentRoute in setOf(SESSION_ROUTE, PROFILE_ROUTE) && state.phase == DriverAuthPhase.SIGNED_OUT -> LOGIN_ROUTE
             else -> null
         }
         if (destination != null) {
@@ -145,7 +168,12 @@ fun DriverAppNavigation() {
             )
         }
         composable(LOGIN_ROUTE) {
-            DriverLoginScreen(state = state, onLogin = auth::login, onInputChanged = auth::clearInputErrors,
+            DriverLoginScreen(state = state.copy(message = state.message ?: profileSessionNotice),
+                onLogin = { identifier, password, remember ->
+                    profileSessionNotice = null
+                    auth.login(identifier, password, remember)
+                },
+                onInputChanged = { profileSessionNotice = null; auth.clearInputErrors() },
                 onRegister = {
                     register.reset()
                     navController.navigate(REGISTER_INTRO_ROUTE) { launchSingleTop = true }
@@ -171,7 +199,20 @@ fun DriverAppNavigation() {
             if (registration.registered) DriverRegisterSuccessScreen(onLogin = { navController.finishRegistration() })
         }
         composable(SESSION_ROUTE) {
-            DriverSessionScreen(state = state, onRetry = auth::checkSession, onLogout = auth::logout)
+            DriverSessionScreen(state = state, onRetry = auth::checkSession, onLogout = auth::logout,
+                onProfile = { navController.navigate(PROFILE_ROUTE) { launchSingleTop = true } })
+        }
+        composable(PROFILE_ROUTE) {
+            if (state.phase == DriverAuthPhase.AUTHENTICATED) {
+                DriverProfileScreen(
+                    state = profileState, onRetry = profile::load, onEdit = profile::startEditing,
+                    onCancel = profile::cancelEditing, onVehicle = profile::selectVehicle,
+                    onPlate = profile::updatePlate, onSave = profile::save,
+                    onHome = { navController.popBackStack(SESSION_ROUTE, false) }, onLogout = auth::logout,
+                )
+            } else {
+                DriverSessionScreen(state = state, onRetry = auth::checkSession, onLogout = auth::logout, onProfile = {})
+            }
         }
     }
 }

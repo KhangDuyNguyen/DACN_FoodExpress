@@ -152,6 +152,11 @@ class DriverAuthRepository @Inject constructor(
 
     suspend fun logout(): DriverAuthResult = discardSession(null)
 
+    // Profile shares Login's session and expiry rule, including sessions without Remember Login.
+    internal fun currentAccessToken(): String? = memoryToken?.takeIf { token ->
+        tokenExpiry(token)?.let { it > nowSeconds() } == true
+    }
+
     private suspend fun discardSession(message: String?): DriverAuthResult {
         memoryToken = null
         return try {

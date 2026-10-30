@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 
 // A transparent integration destination for this Login step, not a Driver Dashboard.
 @Composable
-fun DriverSessionScreen(state: DriverAuthUiState, onRetry: () -> Unit, onLogout: () -> Unit) {
+fun DriverSessionScreen(state: DriverAuthUiState, onRetry: () -> Unit, onLogout: () -> Unit, onProfile: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
@@ -30,7 +30,8 @@ fun DriverSessionScreen(state: DriverAuthUiState, onRetry: () -> Unit, onLogout:
             DriverAuthPhase.AUTHENTICATED -> {
                 Text("Đăng nhập thành công!", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                 Text("Xin chào ${state.user?.fullName.orEmpty()}", textAlign = TextAlign.Center)
-                Text("Điểm đến tạm sau đăng nhập. Dashboard và Hồ sơ chưa được triển khai trong bước này.", textAlign = TextAlign.Center)
+                Text("Điểm đến tạm sau đăng nhập. Dashboard chưa được triển khai trong bước này.", textAlign = TextAlign.Center)
+                Button(onClick = onProfile) { Text("Mở Hồ sơ tài xế") }
                 TextButton(onClick = onLogout) { Text("Đăng xuất") }
             }
             DriverAuthPhase.RETRY_SESSION -> {
