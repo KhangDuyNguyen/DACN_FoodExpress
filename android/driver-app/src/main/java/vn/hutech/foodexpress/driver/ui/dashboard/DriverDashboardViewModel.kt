@@ -156,7 +156,7 @@ class DriverDashboardViewModel @Inject constructor(
                 if (wantsOnline && onlineRisk && !offlineNeeded && !state.value.saving && !state.value.statusUnknown
                     && snapshot.status == DriverGpsStatus.READY && snapshot.fix!!.elapsedNanos > lastUploadedFix
                     && now - lastUploadAttempt >= DriverLocationPolicy.UPLOAD_INTERVAL_MS * 1_000_000
-                ) upload(snapshot.fix, session)
+                ) upload(session, intentVersion)
                 delay(1_000)
             }
         }
@@ -266,13 +266,26 @@ class DriverDashboardViewModel @Inject constructor(
         }
     }
 
-    private fun upload(fix: DriverLocationFix, session: Long) {
+    private fun upload(session: Long, intent: Long) {
         if (uploadJob?.isActive == true) return
-        lastUploadAttempt = gps.nowNanos()
         uploadJob = viewModelScope.launch {
             operations.withLock {
-                if (!current(session) || !verified || !foreground || !wantsOnline || offlineNeeded) return@withLock
-                when (val result = locations.record(fix, gps.nowNanos())) {
+                if (!canEnable(session, intent) || !onlineRisk || offlineNeeded || state.value.saving || state.value.statusUnknown
+                    || state.value.profile?.status != "APPROVED" || state.value.profile?.isOnline != true
+                ) return@withLock
+                // GET may have held the mutex long enough to invalidate the queued fix.
+                // Re-sample here; the monitor still owns permission/lost-fix Offline policy.
+                val snapshot = gps.refresh()
+                mutableState.value = state.value.copy(gps = snapshot)
+                val now = gps.nowNanos()
+                val fix = snapshot.fix
+                if (snapshot.status != DriverGpsStatus.READY || fix == null || DriverLocationPolicy.problem(fix, now) != null
+                    || fix.elapsedNanos <= lastUploadedFix
+                    || now - lastUploadAttempt < DriverLocationPolicy.UPLOAD_INTERVAL_MS * 1_000_000
+                ) return@withLock
+                // Throttle actual periodic attempts, not time spent waiting for the mutex.
+                lastUploadAttempt = now
+                when (val result = locations.record(fix, now)) {
                     DriverLocationResult.Recorded -> if (current(session)) lastUploadedFix = fix.elapsedNanos
                     DriverLocationResult.SessionExpired -> if (current(session)) expire()
                     is DriverLocationResult.Failed -> if (current(session)) {
