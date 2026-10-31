@@ -30,9 +30,10 @@ fun DriverSessionScreen(
     dashboardState: DriverDashboardUiState,
     onDashboardRetry: () -> Unit,
     onReceivingOrders: (Boolean) -> Unit,
+    onGpsRetry: () -> Unit,
 ) {
     if (state.phase == DriverAuthPhase.AUTHENTICATED) {
-        DriverDashboardScreen(dashboardState, onDashboardRetry, onReceivingOrders, onProfile, onLogout)
+        DriverDashboardScreen(dashboardState, onDashboardRetry, onReceivingOrders, onProfile, onLogout, onGpsRetry)
         return
     }
     Column(

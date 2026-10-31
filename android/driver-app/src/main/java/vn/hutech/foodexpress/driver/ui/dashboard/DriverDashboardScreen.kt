@@ -1,5 +1,16 @@
 package vn.hutech.foodexpress.driver.ui.dashboard
 
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.saveable.rememberSaveable
+import vn.hutech.foodexpress.driver.data.location.DriverGpsStatus
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -54,7 +65,26 @@ fun DriverDashboardScreen(
     onReceivingOrders: (Boolean) -> Unit,
     onProfile: () -> Unit,
     onLogout: () -> Unit,
+    onGpsRetry: () -> Unit,
 ) {
+    val context = LocalContext.current
+    var permissionRequested by rememberSaveable { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { onGpsRetry() }
+    val gpsAction: () -> Unit = {
+        when (state.gps.status) {
+            DriverGpsStatus.NO_PERMISSION, DriverGpsStatus.APPROXIMATE -> {
+                val activity = context as? Activity
+                if (permissionRequested && activity != null && !activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)) {
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+                } else {
+                    permissionRequested = true
+                    permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                }
+            }
+            DriverGpsStatus.SERVICES_OFF -> context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            else -> onGpsRetry()
+        }
+    }
     val pullState = rememberPullToRefreshState()
     val scrollState = rememberScrollState()
     val refreshThreshold = 100.dp
@@ -129,8 +159,10 @@ fun DriverDashboardScreen(
                     }
                     else -> {
                         ApprovalSummary(profile)
-                        ReceivingOrdersCard(state.copy(profile = profile), onReceivingOrders)
-                        state.message?.let { DashboardMessage(it, state.offlineConfirmed) }
+                        ReceivingOrdersCard(state.copy(profile = profile), onReceivingOrders, gpsAction)
+                        state.message?.let { DashboardMessage(it,
+                            state.offlineConfirmed || (profile.isOnline == true && !state.statusUnknown && !state.saving), state.messageIsError) }
+                        if (state.statusUnknown && !state.saving) TextButton(onClick = refresh) { Text("Thử lại") }
                     }
                 }
                 if (profile == null) {
@@ -178,7 +210,7 @@ private fun ApprovalSummary(profile: DriverProfile) {
             background = Color(0xFFFFF3D9); accent = Color(0xFF865000)
         }
         "APPROVED" -> {
-            title = "Đã được duyệt"; body = "Cần xác minh vị trí GPS hiện tại trước khi bật nhận đơn."
+            title = "Đã được duyệt"; body = "Chỉ nhận đơn khi có vị trí hợp lệ và máy chủ xác nhận."
             background = Color(0xFFE5F7EB); accent = DashboardGreen
         }
         "REJECTED" -> {
@@ -202,20 +234,31 @@ private fun ApprovalSummary(profile: DriverProfile) {
 }
 
 @Composable
-private fun ReceivingOrdersCard(state: DriverDashboardUiState, onChange: (Boolean) -> Unit) {
+private fun ReceivingOrdersCard(state: DriverDashboardUiState, onChange: (Boolean) -> Unit, onGpsAction: () -> Unit) {
     val online = state.profile?.isOnline == true
-    DashboardCard(if (online) Color(0xFFE5F7EB) else Color(0xFFF2F2F4)) {
+    val approved = state.profile?.status == "APPROVED"
+    val canRequest = approved && !state.statusUnknown && !state.loading && state.gps.status in setOf(
+        DriverGpsStatus.READY, DriverGpsStatus.WAITING, DriverGpsStatus.STALE, DriverGpsStatus.INACCURATE)
+    DashboardCard(if (online && !state.statusUnknown) Color(0xFFE5F7EB) else Color(0xFFF2F2F4)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DashboardIcon(DashboardIconType.Pin, if (online) DashboardGreen else DashboardMuted, Modifier.size(24.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(if (online) "Đang bật nhận đơn trên máy chủ" else "Bật nhận đơn", color = DashboardInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp)
-                Text(if (online) "GPS hiện tại chưa được xác minh. Hãy chuyển Offline."
-                    else "Đang Offline theo phản hồi máy chủ.", color = DashboardMuted, fontSize = 12.sp, lineHeight = 16.sp)
+                Text(if (state.statusUnknown) "Trạng thái chưa xác nhận" else if (online) "Đang bật nhận đơn trên máy chủ" else "Bật nhận đơn", color = DashboardInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp)
+                Text(if (state.statusUnknown) "Cần tải lại để đối chiếu với máy chủ."
+                    else if (online) "Máy chủ đã xác nhận Online." else "Đang Offline theo phản hồi máy chủ.", color = DashboardMuted, fontSize = 12.sp, lineHeight = 16.sp)
             }
             if (state.saving) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-            else Switch(checked = online, onCheckedChange = onChange, enabled = online && !state.loading)
+            Switch(checked = online, onCheckedChange = onChange, enabled = !state.saving && (online || canRequest))
         }
-        Text("GPS chưa được xác minh; chưa thể bật Online.", color = DashboardMuted, fontSize = 12.sp, lineHeight = 16.sp)
+        Text(if (approved) state.gps.message else "Hồ sơ chưa được duyệt; chưa thể bật Online.", color = DashboardMuted, fontSize = 12.sp, lineHeight = 16.sp)
+        if (state.enablingOnline) TextButton(onClick = { onChange(false) }) { Text("Hủy yêu cầu bật nhận đơn") }
+        if (approved && !state.saving && state.gps.status != DriverGpsStatus.READY) TextButton(onClick = onGpsAction) {
+            Text(when (state.gps.status) {
+                DriverGpsStatus.NO_PERMISSION, DriverGpsStatus.APPROXIMATE -> "Cấp quyền vị trí chính xác"
+                DriverGpsStatus.SERVICES_OFF -> "Bật dịch vụ vị trí"
+                else -> "Thử lại GPS"
+            })
+        }
     }
 }
 
@@ -241,8 +284,8 @@ private fun DashboardCard(color: Color, content: @Composable ColumnScope.() -> U
 }
 
 @Composable
-private fun DashboardMessage(message: String, success: Boolean) {
-    Text(message, color = if (success) DashboardGreen else MaterialTheme.colorScheme.error, fontSize = 14.sp,
+private fun DashboardMessage(message: String, success: Boolean, error: Boolean = true) {
+    Text(message, color = if (error) MaterialTheme.colorScheme.error else if (success) DashboardGreen else DashboardMuted, fontSize = 14.sp,
         lineHeight = 20.sp, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
 }
 
