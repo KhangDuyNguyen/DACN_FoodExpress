@@ -17,23 +17,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import vn.hutech.foodexpress.driver.ui.dashboard.DriverDashboardScreen
+import vn.hutech.foodexpress.driver.ui.dashboard.DriverDashboardUiState
 
-// A transparent integration destination for this Login step, not a Driver Dashboard.
+// The existing session destination now hosts Dashboard after authentication.
 @Composable
-fun DriverSessionScreen(state: DriverAuthUiState, onRetry: () -> Unit, onLogout: () -> Unit, onProfile: () -> Unit) {
+fun DriverSessionScreen(
+    state: DriverAuthUiState,
+    onRetry: () -> Unit,
+    onLogout: () -> Unit,
+    onProfile: () -> Unit,
+    dashboardState: DriverDashboardUiState,
+    onDashboardRetry: () -> Unit,
+    onReceivingOrders: (Boolean) -> Unit,
+) {
+    if (state.phase == DriverAuthPhase.AUTHENTICATED) {
+        DriverDashboardScreen(dashboardState, onDashboardRetry, onReceivingOrders, onProfile, onLogout)
+        return
+    }
     Column(
         modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         when (state.phase) {
-            DriverAuthPhase.AUTHENTICATED -> {
-                Text("Đăng nhập thành công!", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-                Text("Xin chào ${state.user?.fullName.orEmpty()}", textAlign = TextAlign.Center)
-                Text("Điểm đến tạm sau đăng nhập. Dashboard chưa được triển khai trong bước này.", textAlign = TextAlign.Center)
-                Button(onClick = onProfile) { Text("Mở Hồ sơ tài xế") }
-                TextButton(onClick = onLogout) { Text("Đăng xuất") }
-            }
             DriverAuthPhase.RETRY_SESSION -> {
                 Text(state.message.orEmpty(), textAlign = TextAlign.Center)
                 Button(onClick = onRetry) { Text("Thử xác minh lại") }

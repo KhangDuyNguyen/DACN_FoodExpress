@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -24,6 +26,7 @@ import vn.hutech.foodexpress.driver.ui.auth.DriverRegisterViewModel
 import vn.hutech.foodexpress.driver.ui.auth.DriverSessionScreen
 import vn.hutech.foodexpress.driver.ui.profile.DriverProfileScreen
 import vn.hutech.foodexpress.driver.ui.profile.DriverProfileViewModel
+import vn.hutech.foodexpress.driver.ui.dashboard.DriverDashboardViewModel
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverOnboardingScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverPermissionIntroScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverSplashScreen
@@ -55,6 +58,8 @@ fun DriverAppNavigation() {
     val registration by register.state.collectAsStateWithLifecycle()
     val profile: DriverProfileViewModel = viewModel()
     val profileState by profile.state.collectAsStateWithLifecycle()
+    val dashboard: DriverDashboardViewModel = viewModel()
+    val dashboardState by dashboard.state.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     var profileSessionNotice by rememberSaveable { mutableStateOf<String?>(null) }
@@ -64,9 +69,11 @@ fun DriverAppNavigation() {
     LaunchedEffect(currentRoute, state.phase) {
         if (currentRoute == PROFILE_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED) profile.load()
         else profile.clear()
+        if (currentRoute == SESSION_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED) dashboard.load()
+        else dashboard.clear()
     }
-    LaunchedEffect(profileState.sessionExpired) {
-        if (profileState.sessionExpired) {
+    LaunchedEffect(profileState.sessionExpired, dashboardState.sessionExpired) {
+        if (profileState.sessionExpired || dashboardState.sessionExpired) {
             profileSessionNotice = "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại."
             auth.logout()
         }
@@ -198,11 +205,25 @@ fun DriverAppNavigation() {
         composable(REGISTER_SUCCESS_ROUTE) {
             if (registration.registered) DriverRegisterSuccessScreen(onLogin = { navController.finishRegistration() })
         }
-        composable(SESSION_ROUTE) {
+        composable(
+            SESSION_ROUTE,
+            enterTransition = { if (initialState.destination.route == PROFILE_ROUTE) EnterTransition.None else null },
+            exitTransition = { if (targetState.destination.route == PROFILE_ROUTE) ExitTransition.None else null },
+            popEnterTransition = { if (initialState.destination.route == PROFILE_ROUTE) EnterTransition.None else null },
+            popExitTransition = { if (targetState.destination.route == PROFILE_ROUTE) ExitTransition.None else null },
+        ) {
             DriverSessionScreen(state = state, onRetry = auth::checkSession, onLogout = auth::logout,
-                onProfile = { navController.navigate(PROFILE_ROUTE) { launchSingleTop = true } })
+                onProfile = { navController.navigate(PROFILE_ROUTE) { launchSingleTop = true } },
+                dashboardState = dashboardState, onDashboardRetry = dashboard::load,
+                onReceivingOrders = dashboard::changeReceivingOrders)
         }
-        composable(PROFILE_ROUTE) {
+        composable(
+            PROFILE_ROUTE,
+            enterTransition = { if (initialState.destination.route == SESSION_ROUTE) EnterTransition.None else null },
+            exitTransition = { if (targetState.destination.route == SESSION_ROUTE) ExitTransition.None else null },
+            popEnterTransition = { if (initialState.destination.route == SESSION_ROUTE) EnterTransition.None else null },
+            popExitTransition = { if (targetState.destination.route == SESSION_ROUTE) ExitTransition.None else null },
+        ) {
             if (state.phase == DriverAuthPhase.AUTHENTICATED) {
                 DriverProfileScreen(
                     state = profileState, onRetry = profile::load, onEdit = profile::startEditing,
@@ -211,7 +232,9 @@ fun DriverAppNavigation() {
                     onHome = { navController.popBackStack(SESSION_ROUTE, false) }, onLogout = auth::logout,
                 )
             } else {
-                DriverSessionScreen(state = state, onRetry = auth::checkSession, onLogout = auth::logout, onProfile = {})
+                DriverSessionScreen(state = state, onRetry = auth::checkSession, onLogout = auth::logout, onProfile = {},
+                    dashboardState = dashboardState, onDashboardRetry = dashboard::load,
+                    onReceivingOrders = dashboard::changeReceivingOrders)
             }
         }
     }
