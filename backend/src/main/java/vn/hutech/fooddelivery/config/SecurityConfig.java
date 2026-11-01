@@ -27,7 +27,7 @@ import java.util.List;
 
 /**
  * Cau hinh bao mat: JWT, khong dung session, phan quyen theo users.role.
- *   Cong khai: health, auth, Swagger, WebSocket, callback thanh toan, GET quan/loai mon
+ *   Cong khai: health, auth, Swagger, WebSocket, callback thanh toan, GET quan/loai mon, voucher cho gio hang
  *   /api/admin/**     -> ADMIN
  *   /api/merchant/**  -> MERCHANT
  *   /api/driver/**    -> DRIVER
@@ -62,7 +62,8 @@ public class SecurityConfig {
                                 // Trang loi noi bo cua Spring, neu chan thi loi cua API cong khai bi doi thanh 401
                                 "/error"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/restaurants/**", "/api/cuisines").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/restaurants/**", "/api/cuisines", "/api/vouchers").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/vouchers/validate").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/merchant/**").hasRole("MERCHANT")
                         .requestMatchers("/api/driver/**").hasRole("DRIVER")
