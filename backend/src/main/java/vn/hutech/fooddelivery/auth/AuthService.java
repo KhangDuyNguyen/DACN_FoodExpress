@@ -15,6 +15,9 @@ import vn.hutech.fooddelivery.security.JwtService;
 import vn.hutech.fooddelivery.user.UserRepository;
 import vn.hutech.fooddelivery.user.UserRow;
 import vn.hutech.fooddelivery.user.dto.UserResponse;
+// ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - REPOSITORY =====
+import vn.hutech.fooddelivery.driver.DriverRepository;
+// ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - REPOSITORY =====
 
 /** Nghiep vu dang ky va dang nhap. */
 @Service
@@ -26,11 +29,21 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - DEPENDENCY =====
+    private final DriverRepository driverRepository;
+    // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - DEPENDENCY =====
 
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService,
+                       // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - INJECTION =====
+                       DriverRepository driverRepository
+                       // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - INJECTION =====
+    ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - INJECTION =====
+        this.driverRepository = driverRepository;
+        // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - INJECTION =====
     }
 
     @Transactional
@@ -53,6 +66,13 @@ public class AuthService {
             // Hai request dang ky cung luc vuot qua buoc kiem tra o tren, unique key trong DB chan lai
             throw new ConflictException("Số điện thoại hoặc email đã được đăng ký");
         }
+
+        // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER =====
+        if ("DRIVER".equals(req.role())) {
+            // Dung cung transaction dang ky; INSERT driver loi se rollback ca users.
+            driverRepository.insert(id, req.vehicleType(), req.licensePlate());
+        }
+        // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER =====
 
         UserRow user = userRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy người dùng"));
