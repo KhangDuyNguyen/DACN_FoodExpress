@@ -235,7 +235,8 @@ export const MerchantOrdersPage: React.FC = () => {
             <Table
               style={{ marginTop: 16 }}
               size="small"
-              rowKey={(_, index) => String(index)}
+              // Trong 1 don, cung mon va cung ghi chu da duoc gop luc them vao gio nen bo 3 nay khong trung
+              rowKey={(i) => `${i.menuItemId}-${i.name}-${i.note ?? ''}`}
               pagination={false}
               dataSource={detail.items}
               columns={[
