@@ -4,7 +4,8 @@ import java.util.List;
 
 /**
  * DTO chi tiết nhà hàng, dùng cho trang chi tiết quán.
- * Bao gồm đầy đủ thông tin quán + danh sách loại món + giờ mở cửa.
+ * Bao gồm đầy đủ thông tin quán + danh sách loại món + giờ mở cửa
+ * + chủ quán + các chi nhánh khác của cùng chủ quán.
  */
 public record RestaurantDetailDTO(
         long id,
@@ -22,5 +23,7 @@ public record RestaurantDetailDTO(
         int prepTimeMinutes,
         String openStatus,
         List<CuisineDTO> cuisines,
-        List<RestaurantHoursDTO> hours
+        List<RestaurantHoursDTO> hours,
+        MerchantBriefDTO merchant,
+        List<BranchDTO> otherBranches
 ) {}

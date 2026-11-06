@@ -3,7 +3,7 @@ package vn.hutech.fooddelivery.restaurant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.hutech.fooddelivery.common.NotFoundException;
-import vn.hutech.fooddelivery.common.Haversine;
+import vn.hutech.fooddelivery.common.PageResponse;
 import vn.hutech.fooddelivery.restaurant.dto.*;
 
 import java.util.*;
@@ -21,24 +21,25 @@ public class RestaurantService {
     }
 
     /**
-     * Tìm kiếm nhà hàng với filter tùy chọn.
-     * Nếu có lat/lng thì sort theo khoảng cách, không thì sort theo avg_rating.
+     * Tìm kiếm nhà hàng với filter tùy chọn, trả về một trang kết quả.
+     * Có đủ lat và lng thì sort theo khoảng cách (gần trước), không thì sort theo avg_rating.
+     * page bắt đầu từ 0; controller đã kiểm tra page >= 0 và 1 <= size <= 50.
      */
     @Transactional(readOnly = true)
-    public List<RestaurantSummaryDTO> searchRestaurants(String keyword, Integer cuisineId,
-                                                         Double userLat, Double userLng) {
-        List<RestaurantSummaryDTO> restaurants = restaurantRepository.search(keyword, cuisineId);
+    public PageResponse<RestaurantSummaryDTO> searchRestaurants(String keyword, Integer cuisineId,
+                                                                Double userLat, Double userLng,
+                                                                int page, int size) {
+        // Ô tìm kiếm để trống hoặc toàn dấu cách thì coi như không lọc theo tên
+        String cleanKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
+        // Thiếu một trong hai tọa độ thì không tính khoảng cách
+        boolean hasLocation = userLat != null && userLng != null;
+        // Ép kiểu long trước khi nhân để page rất lớn không bị tràn số int
+        long offset = (long) page * size;
 
-        if (userLat != null && userLng != null) {
-            Map<Long, Double> distanceMap = new HashMap<>();
-            for (RestaurantSummaryDTO r : restaurants) {
-                double dist = Haversine.distanceKm(userLat, userLng, r.lat(), r.lng());
-                distanceMap.put(r.id(), dist);
-            }
-            restaurants.sort(Comparator.comparingDouble(r -> distanceMap.get(r.id())));
-        }
-
-        return restaurants;
+        List<RestaurantSummaryDTO> items = restaurantRepository.search(cleanKeyword, cuisineId,
+                hasLocation ? userLat : null, hasLocation ? userLng : null, size, offset);
+        long totalItems = restaurantRepository.countSearch(cleanKeyword, cuisineId);
+        return PageResponse.of(items, page, size, totalItems);
     }
 
     /**
@@ -63,5 +64,21 @@ public class RestaurantService {
 
         List<MenuCategoryDTO> categories = restaurantRepository.findMenuByRestaurantId(restaurantId);
         return new MenuDTO(restaurantId, categories);
+    }
+
+    /**
+     * Chi tiết một món. Món không có, không thuộc quán này, nhóm món bị tắt
+     * hoặc quán không ACTIVE thì đều trả 404.
+     */
+    @Transactional(readOnly = true)
+    public MenuItemDetailDTO getMenuItem(long restaurantId, long itemId) {
+        return restaurantRepository.findMenuItem(restaurantId, itemId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy món trong quán này"));
+    }
+
+    /** Các quán/chi nhánh mà chủ quán (users.id = ownerUserId) sở hữu. Chưa có quán thì trả danh sách rỗng. */
+    @Transactional(readOnly = true)
+    public List<MerchantRestaurantDTO> getRestaurantsOfOwner(long ownerUserId) {
+        return restaurantRepository.findByOwnerUserId(ownerUserId);
     }
 }

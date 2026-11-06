@@ -38,9 +38,16 @@ public class RestaurantRepository {
         return ((Number) val).longValue();
     }
 
-    // ── Search restaurants ────────────────────────────────────────────────────
+    // ── Search restaurants (có phân trang) ───────────────────────────────────
 
-    public List<RestaurantSummaryDTO> search(String keyword, Integer cuisineId) {
+    /**
+     * Một trang kết quả tìm quán.
+     * userLat/userLng khác null: tính khoảng cách (km) bằng hàm ST_Distance_Sphere có sẵn của MySQL
+     * và sắp xếp quán gần nhất lên trước. Bằng null: distance_km = NULL ở mọi dòng, nên thứ tự
+     * rơi xuống avg_rating giảm dần. Sắp xếp làm trong SQL thì LIMIT/OFFSET mới cắt trang đúng.
+     */
+    public List<RestaurantSummaryDTO> search(String keyword, Integer cuisineId,
+                                             Double userLat, Double userLng, int limit, long offset) {
         String sql = """
             SELECT
                 r.id,
@@ -55,7 +62,10 @@ public class RestaurantRepository {
                 r.rating_count,
                 r.min_order_amount,
                 r.prep_time_minutes,
-                r.open_status
+                r.open_status,
+                CASE WHEN :lat IS NULL OR :lng IS NULL THEN NULL
+                     ELSE ROUND(ST_Distance_Sphere(POINT(r.lng, r.lat), POINT(:lng, :lat)) / 1000, 2)
+                END AS distance_km
             FROM restaurants r
             LEFT JOIN (
                 SELECT rc1.restaurant_id, MIN(rc1.cuisine_id) AS cuisine_id
@@ -69,12 +79,17 @@ public class RestaurantRepository {
                     SELECT 1 FROM restaurant_cuisines rc2
                     WHERE rc2.restaurant_id = r.id AND rc2.cuisine_id = :cuisineId
                 ))
-            ORDER BY r.avg_rating DESC
+            ORDER BY distance_km, r.avg_rating DESC, r.id
+            LIMIT :limit OFFSET :offset
             """;
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("keyword", keyword)
-                .addValue("cuisineId", cuisineId);
+                .addValue("cuisineId", cuisineId)
+                .addValue("lat", userLat)
+                .addValue("lng", userLng)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
 
         return jdbc.query(sql, params, (rs, rowNum) -> new RestaurantSummaryDTO(
                 rs.getLong("id"),
@@ -89,8 +104,31 @@ public class RestaurantRepository {
                 rs.getInt("rating_count"),
                 rs.getLong("min_order_amount"),
                 rs.getInt("prep_time_minutes"),
-                rs.getString("open_status")
+                rs.getString("open_status"),
+                // getObject(..., Double.class) giữ được NULL (getDouble sẽ đổi NULL thành 0)
+                rs.getObject("distance_km", Double.class)
         ));
+    }
+
+    /** Tổng số quán khớp bộ lọc (cùng điều kiện WHERE với search), để tính số trang. */
+    public long countSearch(String keyword, Integer cuisineId) {
+        String sql = """
+            SELECT COUNT(*)
+            FROM restaurants r
+            WHERE r.status = 'ACTIVE'
+                AND (:keyword IS NULL OR r.name LIKE CONCAT('%', :keyword, '%'))
+                AND (:cuisineId IS NULL OR EXISTS (
+                    SELECT 1 FROM restaurant_cuisines rc2
+                    WHERE rc2.restaurant_id = r.id AND rc2.cuisine_id = :cuisineId
+                ))
+            """;
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("keyword", keyword)
+                .addValue("cuisineId", cuisineId);
+
+        Long total = jdbc.queryForObject(sql, params, Long.class);
+        return total == null ? 0 : total;
     }
 
     // ── Restaurant detail ─────────────────────────────────────────────────────
@@ -100,8 +138,10 @@ public class RestaurantRepository {
             SELECT r.id, r.name, r.description, r.phone, r.address,
                    r.lat, r.lng, r.logo_url, r.cover_url,
                    r.avg_rating, r.rating_count,
-                   r.min_order_amount, r.prep_time_minutes, r.open_status
+                   r.min_order_amount, r.prep_time_minutes, r.open_status,
+                   r.merchant_id, m.business_name
             FROM restaurants r
+            JOIN merchants m ON m.id = r.merchant_id
             WHERE r.id = :id AND r.status = 'ACTIVE'
             """;
 
@@ -113,6 +153,9 @@ public class RestaurantRepository {
         Map<String, Object> row = rows.get(0);
         List<CuisineDTO> cuisines = findCuisinesByRestaurantId(id);
         List<RestaurantHoursDTO> hours = findHoursByRestaurantId(id);
+        long merchantId = toLong(row.get("merchant_id"));
+        MerchantBriefDTO merchant = new MerchantBriefDTO(merchantId, (String) row.get("business_name"));
+        List<BranchDTO> otherBranches = findOtherBranches(merchantId, id);
 
         return Optional.of(new RestaurantDetailDTO(
                 toLong(row.get("id")),
@@ -130,7 +173,30 @@ public class RestaurantRepository {
                 toInt(row.get("prep_time_minutes")),
                 (String) row.get("open_status"),
                 cuisines,
-                hours
+                hours,
+                merchant,
+                otherBranches
+        ));
+    }
+
+    /** Các quán ACTIVE khác của cùng chủ quán (một chủ quán có nhiều chi nhánh, theo ERD). */
+    private List<BranchDTO> findOtherBranches(long merchantId, long excludeRestaurantId) {
+        String sql = """
+            SELECT id, name, address, open_status
+            FROM restaurants
+            WHERE merchant_id = :merchantId
+              AND id <> :excludeId
+              AND status = 'ACTIVE'
+            ORDER BY name
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("merchantId", merchantId)
+                .addValue("excludeId", excludeRestaurantId);
+        return jdbc.query(sql, params, (rs, rowNum) -> new BranchDTO(
+                rs.getLong("id"),
+                rs.getString("name"),
+                rs.getString("address"),
+                rs.getString("open_status")
         ));
     }
 
@@ -274,5 +340,60 @@ public class RestaurantRepository {
         }
 
         return new ArrayList<>(catMap.values());
+    }
+
+    // ── Chi tiết một món ──────────────────────────────────────────────────────
+
+    /**
+     * Món phải thuộc đúng quán trong URL (mc.restaurant_id = :restaurantId),
+     * nằm trong nhóm món đang bật và quán đang ACTIVE. Sai một điều kiện -> rỗng -> 404.
+     */
+    public Optional<MenuItemDetailDTO> findMenuItem(long restaurantId, long itemId) {
+        String sql = """
+            SELECT mi.id, mc.restaurant_id, mi.category_id, mc.name AS category_name,
+                   mi.name, mi.description, mi.price, mi.image_url, mi.is_available
+            FROM menu_items mi
+            JOIN menu_categories mc ON mc.id = mi.category_id
+            JOIN restaurants r ON r.id = mc.restaurant_id
+            WHERE mi.id = :itemId
+              AND mc.restaurant_id = :restaurantId
+              AND mc.is_active = 1
+              AND r.status = 'ACTIVE'
+            """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("itemId", itemId)
+                .addValue("restaurantId", restaurantId);
+        return jdbc.query(sql, params, (rs, rowNum) -> new MenuItemDetailDTO(
+                rs.getLong("id"),
+                rs.getLong("restaurant_id"),
+                rs.getLong("category_id"),
+                rs.getString("category_name"),
+                rs.getString("name"),
+                rs.getString("description"),
+                rs.getBigDecimal("price"),
+                rs.getString("image_url"),
+                rs.getBoolean("is_available")
+        )).stream().findFirst();
+    }
+
+    // ── Quán của chủ quán đang đăng nhập ──────────────────────────────────────
+
+    /** Mọi quán (kể cả chưa duyệt / đang ẩn) thuộc chủ quán có users.id = ownerUserId. */
+    public List<MerchantRestaurantDTO> findByOwnerUserId(long ownerUserId) {
+        String sql = """
+            SELECT r.id, r.name, r.address, r.open_status, r.status
+            FROM restaurants r
+            JOIN merchants m ON m.id = r.merchant_id
+            WHERE m.owner_user_id = :ownerUserId
+            ORDER BY r.name
+            """;
+        return jdbc.query(sql, new MapSqlParameterSource("ownerUserId", ownerUserId),
+                (rs, rowNum) -> new MerchantRestaurantDTO(
+                        rs.getLong("id"),
+                        rs.getString("name"),
+                        rs.getString("address"),
+                        rs.getString("open_status"),
+                        rs.getString("status")
+                ));
     }
 }
