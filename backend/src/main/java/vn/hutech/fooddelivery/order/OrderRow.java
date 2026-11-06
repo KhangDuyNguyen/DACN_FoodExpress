@@ -3,11 +3,12 @@ package vn.hutech.fooddelivery.order;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-/** 1 dong bang orders, kem ten/so dien thoai/dia chi quan (JOIN restaurants). */
+/** 1 dong bang orders, kem ten khach (JOIN users) va ten/so dien thoai/dia chi quan (JOIN restaurants). */
 public record OrderRow(
         long id,
         String code,
         long customerId,
+        String customerName,
         long restaurantId,
         String restaurantName,
         String restaurantPhone,

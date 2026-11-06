@@ -1,5 +1,6 @@
 package vn.hutech.fooddelivery.order;
 
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -8,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import vn.hutech.fooddelivery.cart.CartLine;
 import vn.hutech.fooddelivery.order.dto.OrderHistoryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderItemResponse;
+import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -126,19 +128,21 @@ public class OrderRepository {
 
     public Optional<OrderRow> findById(long orderId) {
         String sql = """
-                SELECT o.id, o.code, o.customer_id, o.restaurant_id,
+                SELECT o.id, o.code, o.customer_id, u.full_name AS customer_name, o.restaurant_id,
                        r.name AS restaurant_name, r.phone AS restaurant_phone, r.address AS restaurant_address,
                        o.status, o.receiver_name, o.receiver_phone, o.delivery_address, o.note,
                        o.subtotal, o.delivery_fee, o.discount_amount, o.total_amount, o.payment_method,
                        o.distance_km, o.cancel_reason, o.created_at, o.accepted_at, o.delivered_at, o.cancelled_at
                 FROM orders o
                 JOIN restaurants r ON r.id = o.restaurant_id
+                JOIN users u ON u.id = o.customer_id
                 WHERE o.id = :id
                 """;
         return jdbc.query(sql, Map.of("id", orderId), (rs, i) -> new OrderRow(
                 rs.getLong("id"),
                 rs.getString("code"),
                 rs.getLong("customer_id"),
+                rs.getString("customer_name"),
                 rs.getLong("restaurant_id"),
                 rs.getString("restaurant_name"),
                 rs.getString("restaurant_phone"),
@@ -195,6 +199,139 @@ public class OrderRepository {
                 toLocalDateTime(rs.getTimestamp("changed_at")),
                 rs.getString("note")
         ));
+    }
+
+    // ----- Danh sach don (Module D) -----
+
+    private static final RowMapper<OrderSummaryResponse> SUMMARY_MAPPER = (rs, i) -> new OrderSummaryResponse(
+            rs.getLong("id"),
+            rs.getString("code"),
+            rs.getLong("restaurant_id"),
+            rs.getString("restaurant_name"),
+            rs.getString("status"),
+            rs.getBigDecimal("total_amount"),
+            rs.getInt("item_count"),
+            rs.getString("receiver_name"),
+            rs.getString("delivery_address"),
+            toLocalDateTime(rs.getTimestamp("created_at"))
+    );
+
+    /** Don cua 1 khach, moi nhat truoc. status null = moi trang thai. */
+    public List<OrderSummaryResponse> findSummariesByCustomer(long customerId, String status, int limit, long offset) {
+        String sql = """
+                SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name, o.status, o.total_amount,
+                       (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
+                       o.receiver_name, o.delivery_address, o.created_at
+                FROM orders o
+                JOIN restaurants r ON r.id = o.restaurant_id
+                WHERE o.customer_id = :customerId
+                  AND (:status IS NULL OR o.status = :status)
+                ORDER BY o.created_at DESC, o.id DESC
+                LIMIT :limit OFFSET :offset
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("customerId", customerId)
+                .addValue("status", status)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+        return jdbc.query(sql, params, SUMMARY_MAPPER);
+    }
+
+    public long countByCustomer(long customerId, String status) {
+        String sql = """
+                SELECT COUNT(*) FROM orders o
+                WHERE o.customer_id = :customerId
+                  AND (:status IS NULL OR o.status = :status)
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("customerId", customerId)
+                .addValue("status", status);
+        Long total = jdbc.queryForObject(sql, params, Long.class);
+        return total == null ? 0 : total;
+    }
+
+    /**
+     * Don cua cac quan thuoc chu quan ownerUserId (JOIN merchants theo owner_user_id).
+     * restaurantId null = moi chi nhanh cua chu quan; status null = moi trang thai.
+     */
+    public List<OrderSummaryResponse> findSummariesByOwner(long ownerUserId, Long restaurantId, String status,
+                                                           int limit, long offset) {
+        String sql = """
+                SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name, o.status, o.total_amount,
+                       (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
+                       o.receiver_name, o.delivery_address, o.created_at
+                FROM orders o
+                JOIN restaurants r ON r.id = o.restaurant_id
+                JOIN merchants m ON m.id = r.merchant_id
+                WHERE m.owner_user_id = :ownerUserId
+                  AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
+                  AND (:status IS NULL OR o.status = :status)
+                ORDER BY o.created_at DESC, o.id DESC
+                LIMIT :limit OFFSET :offset
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("ownerUserId", ownerUserId)
+                .addValue("restaurantId", restaurantId)
+                .addValue("status", status)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+        return jdbc.query(sql, params, SUMMARY_MAPPER);
+    }
+
+    public long countByOwner(long ownerUserId, Long restaurantId, String status) {
+        String sql = """
+                SELECT COUNT(*)
+                FROM orders o
+                JOIN restaurants r ON r.id = o.restaurant_id
+                JOIN merchants m ON m.id = r.merchant_id
+                WHERE m.owner_user_id = :ownerUserId
+                  AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
+                  AND (:status IS NULL OR o.status = :status)
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("ownerUserId", ownerUserId)
+                .addValue("restaurantId", restaurantId)
+                .addValue("status", status);
+        Long total = jdbc.queryForObject(sql, params, Long.class);
+        return total == null ? 0 : total;
+    }
+
+    /** Quan restaurantId co thuoc chu quan ownerUserId khong. */
+    public boolean isRestaurantOwnedBy(long restaurantId, long ownerUserId) {
+        String sql = """
+                SELECT COUNT(*)
+                FROM restaurants r
+                JOIN merchants m ON m.id = r.merchant_id
+                WHERE r.id = :restaurantId AND m.owner_user_id = :ownerUserId
+                """;
+        Long count = jdbc.queryForObject(sql, Map.of("restaurantId", restaurantId, "ownerUserId", ownerUserId),
+                Long.class);
+        return count != null && count > 0;
+    }
+
+    // ----- Doi trang thai (Module D) -----
+
+    /**
+     * Doi trang thai CHI KHI don van dang o fromStatus (dieu kien "AND status = :fromStatus").
+     * Neu giua luc doc va luc ghi co nguoi khac vua doi, cau lenh khop 0 dong -> tra ve 0.
+     * Cac moc thoi gian va ly do huy duoc ghi kem theo trang thai moi.
+     */
+    public int updateStatus(long orderId, String fromStatus, String toStatus, String cancelReason) {
+        String sql = """
+                UPDATE orders
+                SET status = :toStatus,
+                    accepted_at   = CASE WHEN :toStatus = 'PREPARING' THEN NOW() ELSE accepted_at END,
+                    delivered_at  = CASE WHEN :toStatus = 'DELIVERED' THEN NOW() ELSE delivered_at END,
+                    cancelled_at  = CASE WHEN :toStatus = 'CANCELLED' THEN NOW() ELSE cancelled_at END,
+                    cancel_reason = CASE WHEN :toStatus = 'CANCELLED' THEN :cancelReason ELSE cancel_reason END
+                WHERE id = :orderId AND status = :fromStatus
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("toStatus", toStatus)
+                .addValue("cancelReason", cancelReason)
+                .addValue("orderId", orderId)
+                .addValue("fromStatus", fromStatus);
+        return jdbc.update(sql, params);
     }
 
     private static LocalDateTime toLocalDateTime(Timestamp ts) {
