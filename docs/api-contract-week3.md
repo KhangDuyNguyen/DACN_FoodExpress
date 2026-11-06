@@ -260,6 +260,8 @@ Lỗi ở bất kỳ bước nào → rollback hết, không có đơn "nửa v�
 
 ## Module D: Quản lý đơn (`feature/week3-order-management`)
 
+> Đã làm. Luật chuyển ở `order/OrderStatusFlow.java`, nghiệp vụ ở `order/OrderManagementService.java`. Khác bản đề xuất: chi tiết đơn có thêm `customerName` cho cả khách và chủ quán; danh sách của khách cũng có `receiverName`, `deliveryAddress` (dùng chung 1 DTO); thiếu lý do khi hủy trả 400 với `fieldErrors.reasonGivenWhenCancelled`.
+
 ### Trạng thái tuần 3
 
 Dùng tập con của enum `orders.status` trong V1 (không đổi cấu trúc bảng):
@@ -341,13 +343,14 @@ Mỗi lần đổi: UPDATE `orders` có điều kiện `WHERE id = :id AND statu
 
 ### Test
 
-- Unit test luật chuyển: mọi cặp hợp lệ/không hợp lệ, đúng/sai vai trò.
-- Tích hợp: khách A xem đơn khách B → 403; chủ quán 1 đổi đơn của quán chủ 2 → 403; `PLACED → DELIVERED` → 409; khách hủy khi `PREPARING` → 409.
+- Unit test `OrderStatusFlowTest` (4 test): thử **mọi cặp** (từ, sang) trong 5 trạng thái cho cả khách và chủ quán, đơn đã xong không đổi được nữa.
+- Tích hợp `OrderManagementIntegrationTest` (8 test): đi hết 4 bước, ghi đúng người đổi trong lịch sử; nhảy cóc hoặc lặp bước → 409; trạng thái lạ → 400; chủ quán hủy thiếu lý do → 400; khách chỉ hủy được khi chờ xác nhận; khách B xem/hủy đơn khách A → 403; chủ quán khác xem/đổi/lọc theo chi nhánh không phải của mình → 403; danh sách mới nhất trước, lọc theo trạng thái và chi nhánh.
 
 ### Web
 
-- Khách `/orders`: lịch sử đơn, lọc theo trạng thái. `/orders/:id`: chi tiết + thanh tiến trình trạng thái, tự tải lại mỗi 10 giây (TanStack Query `refetchInterval`; realtime bằng WebSocket để An/Điệp làm sau), nút "Hủy đơn" khi đang chờ xác nhận.
-- Cửa hàng `/merchant/orders` (Ant Design): chọn chi nhánh, tab theo trạng thái, bảng đơn, nút hành động theo trạng thái ("Nhận đơn", "Bắt đầu giao", "Hoàn thành", "Hủy" có ô lý do), tự tải lại mỗi 10 giây.
+- Khách `/orders`: lịch sử đơn, lọc theo trạng thái, phân trang. `/orders/:id`: chi tiết + thanh tiến trình 4 bước, lịch sử trạng thái, tự tải lại mỗi 10 giây khi đơn chưa xong (TanStack Query `refetchInterval`), nút "Hủy đơn" khi đang chờ xác nhận. Trang "Đặt hàng thành công" có nút "Theo dõi đơn"; header có "🧾 Đơn hàng".
+- Cửa hàng `/merchant/orders` (Ant Design, thay trang giới thiệu của Điệp): chọn chi nhánh, tab theo trạng thái, bảng đơn, nút "Nhận đơn", "Bắt đầu giao", "Hoàn thành", "Từ chối/Hủy" (hộp nhập lý do), xem chi tiết đơn, tự tải lại mỗi 10 giây.
+- Để lại cho người phụ trách: Điệp thay việc tải lại 10 giây bằng WebSocket (tuần 5); An thêm bản đồ tài xế ở trang theo dõi đơn và chuyển bước "Hoàn thành" sang tài xế; Dưỡng thêm nút "Đánh giá" cho đơn đã hoàn thành.
 
 ---
 
