@@ -56,7 +56,7 @@ public class RestaurantRepository {
                 GROUP BY rc1.restaurant_id
             ) rc_first ON r.id = rc_first.restaurant_id
             LEFT JOIN cuisines c ON rc_first.cuisine_id = c.id
-            WHERE r.status = 'ACTIVE'
+            WHERE r.status IN ('APPROVED', 'ACTIVE')
                 AND (:keyword IS NULL OR r.name LIKE CONCAT('%', :keyword, '%'))
                 AND (:cuisineId IS NULL OR EXISTS (
                     SELECT 1 FROM restaurant_cuisines rc2
