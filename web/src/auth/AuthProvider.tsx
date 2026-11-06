@@ -27,7 +27,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   function logout() {
     localStorage.removeItem(TOKEN_KEY)
-    queryClient.removeQueries({ queryKey: ['me'] })
+    // Xoa het du lieu da tai (thong tin user, gio hang...), de nguoi dang nhap sau khong thay du lieu cua nguoi truoc
+    queryClient.clear()
     setToken(null)
   }
 

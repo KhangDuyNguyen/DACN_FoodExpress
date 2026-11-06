@@ -5,8 +5,11 @@ import CustomerLayout from './layouts/CustomerLayout'
 import MerchantLayout from './layouts/MerchantLayout'
 
 // Khách hàng
+import Cart from './pages/customer/Cart'
+import Checkout from './pages/customer/Checkout'
 import CustomerHome from './pages/customer/CustomerHome'
 import Login from './pages/customer/Login'
+import OrderSuccess from './pages/customer/OrderSuccess'
 import Register from './pages/customer/Register'
 import RestaurantDetail from './pages/customer/RestaurantDetail'
 import RestaurantList from './pages/customer/RestaurantList'
@@ -42,6 +45,12 @@ export default function App() {
         <Route path="register" element={<Register />} />
         <Route path="restaurants" element={<RestaurantList />} />
         <Route path="restaurants/:id" element={<RestaurantDetail />} />
+        {/* Giỏ hàng, thanh toán: chỉ khách hàng (Khang) */}
+        <Route element={<ProtectedRoute roles={['CUSTOMER']} />}>
+          <Route path="cart" element={<Cart />} />
+          <Route path="checkout" element={<Checkout />} />
+          <Route path="orders/:id/success" element={<OrderSuccess />} />
+        </Route>
       </Route>
 
       {/* Điều hướng đăng nhập cũ của Merchant về trang đăng nhập chung */}
