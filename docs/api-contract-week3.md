@@ -155,6 +155,8 @@ Bổ sung tuần 3:
 
 ## Module C: Giỏ hàng và đặt hàng (`feature/week3-cart-order`)
 
+> Đã làm. Code ở package `cart` và `order`. Chỗ khác so với bản đề xuất: trường `available` đổi thành `isAvailable` (giống menu của Dưỡng), thêm giới hạn khoảng cách giao 30 km, seed phí ship nằm ở `V20261107_02__seed_phi_giao_hang.sql`.
+
 Mỗi khách có tối đa 1 giỏ (`carts.user_id` UNIQUE), giỏ gắn với **một** quán (`carts.restaurant_id`). Tuần 3 chưa làm tùy chọn món (topping, size) vì seed chưa có `option_groups`.
 
 ### C1. Xem giỏ
@@ -166,7 +168,7 @@ Mỗi khách có tối đa 1 giỏ (`carts.user_id` UNIQUE), giỏ gắn với *
   "restaurantId": 1, "restaurantName": "Phở 24 Nguyễn Trãi", "minOrderAmount": 30000,
   "items": [
     { "id": 7, "menuItemId": 1, "name": "Phở bò tái", "imageUrl": "...",
-      "unitPrice": 55000, "quantity": 2, "note": "Không hành", "lineTotal": 110000, "available": true }
+      "unitPrice": 55000, "quantity": 2, "note": "Không hành", "lineTotal": 110000, "isAvailable": true }
   ],
   "itemCount": 2, "subtotal": 110000
 }
@@ -186,7 +188,8 @@ Giỏ trống: `{ "restaurantId": null, "restaurantName": null, "minOrderAmount"
 Quy tắc:
 
 - `quantity` từ 1 đến 99 (400 nếu sai). `note` tối đa 255 ký tự.
-- Thêm cùng món, cùng ghi chú đã có trong giỏ → cộng dồn số lượng.
+- PATCH gửi cả `quantity` và `note` (`note` rỗng hoặc không gửi = xóa ghi chú).
+- Thêm cùng món, cùng ghi chú đã có trong giỏ → cộng dồn số lượng (cộng dồn vượt 99 → 409).
 - Món không tồn tại → 404. Món hết (`is_available = 0`), danh mục bị tắt, hoặc quán không `ACTIVE`/`OPEN` → 409.
 - Giỏ đang có món của **quán khác** và `replaceCart = false` → 409 `"Giỏ hàng đang có món của quán khác"`. Web hỏi "Xóa giỏ cũ và thêm món này?", đồng ý thì gửi lại với `replaceCart = true`.
 - `cartItemId` không thuộc giỏ của mình → 404.
@@ -207,6 +210,8 @@ Cách tính (dùng chung với C4, viết thành 1 class riêng để test):
 - Phí ship theo dòng `delivery_fee_rules` đang bật: `base_fee` cho `base_distance_km` đầu, mỗi km tiếp theo (làm tròn lên) cộng `per_km_fee`. Seed đề xuất: 15.000đ cho 2 km đầu, 5.000đ/km sau đó. Chưa tính giờ cao điểm.
 - `discountAmount = 0` (voucher là phần của Điệp, tuần sau).
 - `totalAmount = subtotal + deliveryFee - discountAmount`.
+- Code: `order/OrderPricing.java` (chỉ tính toán, không gọi database), unit test `OrderPricingTest`.
+- Xem trước chỉ báo 409 khi giỏ trống hoặc điểm giao xa quá **30 km**. Món hết, quán đóng, đơn tối thiểu được kiểm tra lại khi đặt hàng thật (C4); trang giỏ hàng cũng chặn nút "Thanh toán" trong các trường hợp này.
 
 ### C4. Đặt hàng
 
@@ -238,16 +243,18 @@ Lỗi ở bất kỳ bước nào → rollback hết, không có đơn "nửa v�
 
 ### Test
 
-- Unit test lớp tính tiền: subtotal, phí ship (≤ 2 km, 2,1 km, 5 km), tổng.
-- Test tích hợp (Testcontainers, như `SecurityIntegrationTest`): đặt hàng thành công, món hết → 409 và không có dòng `orders` mới, lỗi giữa chừng (ví dụ insert `order_items` lỗi) → không còn `orders`/`order_status_history` và giỏ vẫn còn.
-- Phân quyền: MERCHANT gọi `/api/cart` → 403.
+- Unit test `OrderPricingTest` (6 test): tạm tính, phí ship (0; 1,8; 2; 2,01; 2,1; 3; 3,01; 5 km), tổng không âm, làm tròn khoảng cách.
+- Test tích hợp `CartOrderIntegrationTest` (10 test, Testcontainers): thêm/cộng dồn/sửa/xóa giỏ; món hết, quán đóng → 409; giỏ 1 quán và `replaceCart`; khách B không sửa được giỏ khách A → 404; đặt hàng dùng giá **mới nhất trong DB** và xóa giỏ, bấm lần 2 → 409; món hết lúc đặt → 409, không có đơn mới; dưới đơn tối thiểu → 409; sai dữ liệu → 400; giỏ trống, địa chỉ quá xa → 409.
+- **Rollback**: test gắn tạm vào `order_items` một ràng buộc `CHECK` từ chối ghi chú `"gia lap loi"`. Khi đặt hàng, INSERT `orders` thành công rồi INSERT `order_items` lỗi → API trả 500, số dòng `orders`, `order_items`, `order_status_history` không đổi, giỏ còn nguyên.
+- Phân quyền: MERCHANT gọi `/api/cart` → 403 (trong `SecurityIntegrationTest`).
 
 ### Web
 
-- `/cart`: danh sách món, tăng/giảm/xóa, tổng tạm tính, nút "Thanh toán".
-- `/checkout`: form người nhận + chọn địa chỉ mẫu, hiện phí ship và tổng (gọi C3), nút "Đặt hàng".
-- `/orders/:id/success`: mã đơn, tổng tiền, link "Theo dõi đơn".
-- Header hiện số món trong giỏ.
+- Nút "+ Thêm" ở trang chi tiết quán: chưa đăng nhập thì chuyển sang `/login`; giỏ đang có món quán khác thì hỏi trước khi thay giỏ; thêm xong hiện thanh "🛒 n phần · tổng tiền".
+- `/cart`: danh sách món, tăng/giảm/xóa, báo món hết và thiếu đơn tối thiểu, nút "Thanh toán".
+- `/checkout`: form người nhận (điền sẵn từ tài khoản) + chọn địa chỉ mẫu, hiện phí ship và tổng (gọi C3), nút "Đặt hàng".
+- `/orders/:id/success`: mã đơn, quán, địa chỉ, tổng tiền. Nút "Theo dõi đơn" thêm ở Module D.
+- Header hiện "🛒 Giỏ hàng (n)" cho khách. Đăng xuất thì xóa toàn bộ dữ liệu đã tải, để người dùng sau không thấy giỏ của người trước.
 
 ---
 
