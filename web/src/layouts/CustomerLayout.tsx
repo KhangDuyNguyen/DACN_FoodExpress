@@ -26,9 +26,14 @@ export default function CustomerLayout() {
             <Link to="/merchant">Cửa hàng</Link>
             <Link to="/admin">Admin</Link>
             {isCustomer && (
-              <Link to="/cart" className="font-medium text-gray-800 hover:text-orange-600">
-                🛒 Giỏ hàng{cart && cart.itemCount > 0 ? ` (${cart.itemCount})` : ''}
-              </Link>
+              <>
+                <Link to="/orders" className="font-medium text-gray-800 hover:text-orange-600">
+                  🧾 Đơn hàng
+                </Link>
+                <Link to="/cart" className="font-medium text-gray-800 hover:text-orange-600">
+                  🛒 Giỏ hàng{cart && cart.itemCount > 0 ? ` (${cart.itemCount})` : ''}
+                </Link>
+              </>
             )}
             {user ? (
               <>

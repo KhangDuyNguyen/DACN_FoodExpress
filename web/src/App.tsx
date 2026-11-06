@@ -9,7 +9,9 @@ import Cart from './pages/customer/Cart'
 import Checkout from './pages/customer/Checkout'
 import CustomerHome from './pages/customer/CustomerHome'
 import Login from './pages/customer/Login'
+import MyOrders from './pages/customer/MyOrders'
 import OrderSuccess from './pages/customer/OrderSuccess'
+import OrderTracking from './pages/customer/OrderTracking'
 import Register from './pages/customer/Register'
 import RestaurantDetail from './pages/customer/RestaurantDetail'
 import RestaurantList from './pages/customer/RestaurantList'
@@ -49,6 +51,8 @@ export default function App() {
         <Route element={<ProtectedRoute roles={['CUSTOMER']} />}>
           <Route path="cart" element={<Cart />} />
           <Route path="checkout" element={<Checkout />} />
+          <Route path="orders" element={<MyOrders />} />
+          <Route path="orders/:id" element={<OrderTracking />} />
           <Route path="orders/:id/success" element={<OrderSuccess />} />
         </Route>
       </Route>
