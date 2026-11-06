@@ -2,16 +2,14 @@ package vn.hutech.fooddelivery.restaurant;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.hutech.fooddelivery.common.NotFoundException;
 import vn.hutech.fooddelivery.common.Haversine;
-import vn.hutech.fooddelivery.restaurant.dto.RestaurantSummaryDTO;
+import vn.hutech.fooddelivery.restaurant.dto.*;
 
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
- * Service xử lý business logic cho nhà hàng (restaurants).
+ * Service xử lý business logic cho nhà hàng.
  */
 @Service
 public class RestaurantService {
@@ -23,42 +21,47 @@ public class RestaurantService {
     }
 
     /**
-     * Tìm kiếm nhà hàng với các filter tùy chọn.
-     * <p>
-     * Nếu userLat và userLng được cung cấp, tính khoảng cách từ vị trí người dùng đến mỗi nhà hàng
-     * bằng công thức Haversine và sắp xếp theo khoảng cách tăng dần (gần nhất lên đầu).
-     * Nếu không có tọa độ, sắp xếp theo avgRating giảm dần (mặc định từ repository).
-     * </p>
-     * <p>
-     * Lọc theo cuisineId: Nhà hàng có thể có nhiều loại món (qua bảng restaurant_cuisines).
-     * Nếu cuisineId được cung cấp, chỉ trả về nhà hàng có loại món đó (filter ở repository với EXISTS).
-     * </p>
-     *
-     * @param keyword   từ khóa tìm kiếm (nullable)
-     * @param cuisineId ID loại món ăn (nullable)
-     * @param userLat   vĩ độ người dùng (nullable)
-     * @param userLng   kinh độ người dùng (nullable)
-     * @return danh sách nhà hàng đã lọc và sắp xếp
+     * Tìm kiếm nhà hàng với filter tùy chọn.
+     * Nếu có lat/lng thì sort theo khoảng cách, không thì sort theo avg_rating.
      */
     @Transactional(readOnly = true)
     public List<RestaurantSummaryDTO> searchRestaurants(String keyword, Integer cuisineId,
                                                          Double userLat, Double userLng) {
         List<RestaurantSummaryDTO> restaurants = restaurantRepository.search(keyword, cuisineId);
 
-        // Nếu có tọa độ người dùng, sắp xếp theo khoảng cách
         if (userLat != null && userLng != null) {
-            // Tính khoảng cách cho mỗi nhà hàng và lưu vào map
             Map<Long, Double> distanceMap = new HashMap<>();
-            for (RestaurantSummaryDTO restaurant : restaurants) {
-                double distance = Haversine.distanceKm(userLat, userLng,
-                        restaurant.lat(), restaurant.lng());
-                distanceMap.put(restaurant.id(), distance);
+            for (RestaurantSummaryDTO r : restaurants) {
+                double dist = Haversine.distanceKm(userLat, userLng, r.lat(), r.lng());
+                distanceMap.put(r.id(), dist);
             }
-
-            // Sắp xếp danh sách theo khoảng cách tăng dần
             restaurants.sort(Comparator.comparingDouble(r -> distanceMap.get(r.id())));
         }
 
         return restaurants;
+    }
+
+    /**
+     * Lấy chi tiết nhà hàng theo id.
+     * Throw NotFoundException nếu không tìm thấy hoặc không active.
+     */
+    @Transactional(readOnly = true)
+    public RestaurantDetailDTO getRestaurantById(long id) {
+        return restaurantRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy quán với id: " + id));
+    }
+
+    /**
+     * Lấy menu đầy đủ của nhà hàng (categories -> items -> option_groups -> options).
+     * Throw NotFoundException nếu quán không tồn tại.
+     */
+    @Transactional(readOnly = true)
+    public MenuDTO getMenuByRestaurantId(long restaurantId) {
+        // Kiểm tra quán có tồn tại không
+        restaurantRepository.findById(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy quán với id: " + restaurantId));
+
+        List<MenuCategoryDTO> categories = restaurantRepository.findMenuByRestaurantId(restaurantId);
+        return new MenuDTO(restaurantId, categories);
     }
 }
