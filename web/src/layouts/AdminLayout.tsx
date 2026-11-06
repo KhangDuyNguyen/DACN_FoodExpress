@@ -26,6 +26,7 @@ import {
   ThunderboltFilled,
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/useAuth'
 
 const { Header, Sider, Content, Footer } = Layout
 const { Text } = Typography
@@ -34,6 +35,7 @@ export const AdminLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+  const { logout } = useAuth()
 
   // Xác định active menu key theo đường dẫn hiện tại
   const getSelectedKey = () => {
@@ -88,7 +90,8 @@ export const AdminLayout: React.FC = () => {
       cancelText: 'Hủy',
       okType: 'danger',
       onOk: () => {
-        localStorage.removeItem('token')
+        // logout() xoa ca token lan thong tin user dang giu trong AuthProvider
+        logout()
         message.success('Đã đăng xuất thành công')
         navigate('/')
       },

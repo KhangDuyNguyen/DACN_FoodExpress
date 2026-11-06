@@ -29,7 +29,7 @@ import MerchantVouchersPage from './pages/merchant/MerchantVouchersPage'
 
 // Web gom 3 khu trong 1 project:
 //   /          -> khach hang
-//   /merchant  -> dashboard cua hang (chi MERCHANT, ADMIN)
+//   /merchant  -> dashboard cua hang (chi MERCHANT, vi backend chi cho MERCHANT goi /api/merchant/**)
 //   /admin     -> quan tri (chi ADMIN)
 // Moi nguoi them route cua minh vao dung khu (xem README trong tung thu muc pages/).
 export default function App() {
@@ -47,8 +47,8 @@ export default function App() {
       {/* Điều hướng đăng nhập cũ của Merchant về trang đăng nhập chung */}
       <Route path="merchant/login" element={<Navigate to="/login" replace />} />
 
-      {/* Khu vực Dashboard Cửa hàng (Được bảo vệ bởi JWT: Chỉ MERCHANT, ADMIN) */}
-      <Route element={<ProtectedRoute roles={['MERCHANT', 'ADMIN']} />}>
+      {/* Khu vực Dashboard Cửa hàng (Được bảo vệ bởi JWT: Chỉ MERCHANT) */}
+      <Route element={<ProtectedRoute roles={['MERCHANT']} />}>
         <Route path="merchant" element={<MerchantLayout />}>
           <Route index element={<MerchantOverviewPage />} />
           <Route path="orders" element={<MerchantOrdersPage />} />

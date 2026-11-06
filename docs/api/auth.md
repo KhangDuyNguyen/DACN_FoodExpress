@@ -44,7 +44,16 @@ Kết quả **201**:
 - Thành công trả **200**, nội dung giống kết quả đăng ký.
 - Sai tài khoản hoặc sai mật khẩu trả **401** với cùng một câu `"Sai tài khoản hoặc mật khẩu"`.
 - Mật khẩu đúng nhưng tài khoản `LOCKED`/`DELETED` trả **403** `"Tài khoản đã bị khóa"`.
-- User mẫu trong V2 (`0901234567`) có hash giả nên **không đăng nhập được**. Muốn test, hãy tự đăng ký tài khoản mới.
+- User mẫu trong V2 (`0901234567`) có hash giả nên **không đăng nhập được**.
+- Tài khoản mẫu đăng nhập được (dữ liệu giả, file `V20261026_01__seed_tai_khoan_demo.sql`), mật khẩu chung `Demo@12345`:
+
+  | Vai trò | Số điện thoại | Ghi chú |
+  |---|---|---|
+  | CUSTOMER | `0911000001`, `0911000002` | 2 khách để test "không xem được đơn của người khác" |
+  | MERCHANT | `0922000001`, `0922000002` | Quán của từng người do seed của Dưỡng gắn vào |
+  | DRIVER | `0933000001` | Chưa có dòng `drivers` (phần của An) |
+  | ADMIN | `0900000001` | |
+  | CUSTOMER bị khóa | `0911000009` | Đăng nhập đúng mật khẩu vẫn trả 403 |
 
 ## 3. Gửi token
 
@@ -72,7 +81,10 @@ Authorization: Bearer <token>
 | `/api/admin/**` | Chỉ `ADMIN` |
 | `/api/merchant/**` | Chỉ `MERCHANT` |
 | `/api/driver/**` | Chỉ `DRIVER` |
-| Còn lại (ví dụ `/api/users/me`, `/api/cart`, `/api/orders`) | Đã đăng nhập, vai trò nào cũng được |
+| `/api/cart/**`, `/api/orders/**` | Chỉ `CUSTOMER` (từ tuần 3) |
+| Còn lại (ví dụ `/api/users/me`) | Đã đăng nhập, vai trò nào cũng được |
+
+Lỗi nào không lường trước cũng được `GlobalExceptionHandler` đổi thành `ApiError` (JSON hỏng → 400, sai kiểu tham số → 400, sai đường dẫn → 404, sai method → 405, lỗi khác → 500 kèm câu chung, chi tiết chỉ ghi log ở server).
 
 Lưu ý:
 - `POST/PUT/DELETE /api/restaurants/**` **không** công khai. API sửa quán/menu của chủ quán nên đặt dưới `/api/merchant/...`.

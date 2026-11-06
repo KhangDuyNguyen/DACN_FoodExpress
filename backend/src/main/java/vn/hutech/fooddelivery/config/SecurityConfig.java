@@ -31,7 +31,8 @@ import java.util.List;
  *   /api/admin/**     -> ADMIN
  *   /api/merchant/**  -> MERCHANT
  *   /api/driver/**    -> DRIVER
- *   Con lai           -> phai dang nhap
+ *   /api/cart/**, /api/orders/** -> CUSTOMER (chi khach moi co gio hang va dat don)
+ *   Con lai          -> phai dang nhap
  * Xem bang quyen day du o docs/api/auth.md.
  */
 @Configuration
@@ -67,6 +68,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/merchant/**").hasRole("MERCHANT")
                         .requestMatchers("/api/driver/**").hasRole("DRIVER")
+                        // "/**" khop ca "/api/cart" lan "/api/cart/items/5"
+                        .requestMatchers("/api/cart/**", "/api/orders/**").hasRole("CUSTOMER")
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtAuthFilter(jwtService, userRepository),
                         UsernamePasswordAuthenticationFilter.class);
