@@ -1,7 +1,10 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchRestaurants, fetchCuisines } from '../../api/restaurants'
 import RestaurantCard from '../../components/restaurant/RestaurantCard'
+
+// Số quán mỗi trang (backend cho tối đa 50)
+const PAGE_SIZE = 12
 
 export default function RestaurantList() {
   const [keyword, setKeyword] = useState('')
@@ -9,6 +12,7 @@ export default function RestaurantList() {
   const [search, setSearch] = useState('')
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [gettingLocation, setGettingLocation] = useState(false)
+  const [page, setPage] = useState(0)
 
   // Lấy danh sách cuisines cho filter
   const { data: cuisines = [] } = useQuery({
@@ -16,19 +20,34 @@ export default function RestaurantList() {
     queryFn: fetchCuisines,
   })
 
-  // Lấy danh sách quán với filter
-  const { data: restaurants = [], isLoading, isError } = useQuery({
-    queryKey: ['restaurants', search, selectedCuisine, userLocation],
-    queryFn: () => fetchRestaurants({ 
-      keyword: search || undefined, 
-      cuisine: selectedCuisine,
+  // Lấy 1 trang quán với filter. keepPreviousData: khi sang trang mới vẫn hiện trang cũ cho đến khi tải xong
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['restaurants', search, selectedCuisine, userLocation, page],
+    queryFn: () => fetchRestaurants({
+      keyword: search || undefined,
+      cuisineId: selectedCuisine,
       lat: userLocation?.lat,
-      lng: userLocation?.lng
+      lng: userLocation?.lng,
+      page,
+      size: PAGE_SIZE,
     }),
+    placeholderData: keepPreviousData,
   })
+  const restaurants = data?.items ?? []
+  const totalItems = data?.totalItems ?? 0
+  const totalPages = data?.totalPages ?? 0
+
+  // Đổi bộ lọc thì quay về trang đầu
+  const changeCuisine = (cuisineId: number | undefined) => {
+    setSelectedCuisine(cuisineId)
+    setPage(0)
+  }
 
   // Xử lý tìm kiếm (nhấn Enter hoặc click Search)
-  const handleSearch = () => setSearch(keyword)
+  const handleSearch = () => {
+    setSearch(keyword)
+    setPage(0)
+  }
 
   // Lấy vị trí người dùng
   const handleNearMe = () => {
@@ -45,6 +64,7 @@ export default function RestaurantList() {
           lat: position.coords.latitude,
           lng: position.coords.longitude
         })
+        setPage(0)
         setGettingLocation(false)
       },
       (error) => {
@@ -58,6 +78,7 @@ export default function RestaurantList() {
   // Xóa filter vị trí
   const handleClearLocation = () => {
     setUserLocation(null)
+    setPage(0)
   }
 
   return (
@@ -104,7 +125,7 @@ export default function RestaurantList() {
       {/* Filter cuisines */}
       <div className="mt-4 flex flex-wrap gap-2">
         <button
-          onClick={() => setSelectedCuisine(undefined)}
+          onClick={() => changeCuisine(undefined)}
           className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
             selectedCuisine === undefined
               ? 'border-orange-500 bg-orange-500 text-white'
@@ -116,7 +137,7 @@ export default function RestaurantList() {
         {cuisines.map((c) => (
           <button
             key={c.id}
-            onClick={() => setSelectedCuisine(c.id)}
+            onClick={() => changeCuisine(c.id)}
             className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
               selectedCuisine === c.id
                 ? 'border-orange-500 bg-orange-500 text-white'
@@ -155,7 +176,7 @@ export default function RestaurantList() {
         {!isLoading && restaurants.length > 0 && (
           <>
             <p className="mb-3 text-sm text-gray-500">
-              Tìm thấy <span className="font-semibold text-gray-800">{restaurants.length}</span> quán
+              Tìm thấy <span className="font-semibold text-gray-800">{totalItems}</span> quán
               {userLocation && ' (sắp xếp theo khoảng cách)'}
             </p>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
@@ -163,6 +184,29 @@ export default function RestaurantList() {
                 <RestaurantCard key={r.id} restaurant={r} />
               ))}
             </div>
+
+            {/* Phân trang: chỉ hiện khi có từ 2 trang trở lên */}
+            {totalPages > 1 && (
+              <div className="mt-6 flex items-center justify-center gap-3 text-sm">
+                <button
+                  onClick={() => setPage(page - 1)}
+                  disabled={page === 0}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  ← Trang trước
+                </button>
+                <span className="text-gray-600">
+                  Trang {page + 1} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(page + 1)}
+                  disabled={page + 1 >= totalPages}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Trang sau →
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

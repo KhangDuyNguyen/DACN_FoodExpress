@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { PageResponse } from './page'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ export interface RestaurantSummaryDTO {
   minOrderAmount: number
   prepTimeMinutes: number
   openStatus: 'OPEN' | 'CLOSED' | 'TEMP_CLOSED'
+  distanceKm: number | null   // null khi không gửi lat/lng
 }
 
 export interface RestaurantHoursDTO {
@@ -47,6 +49,20 @@ export interface RestaurantDetailDTO {
   openStatus: 'OPEN' | 'CLOSED' | 'TEMP_CLOSED'
   cuisines: CuisineDTO[]
   hours: RestaurantHoursDTO[]
+  merchant: MerchantBriefDTO
+  otherBranches: BranchDTO[]   // chi nhánh khác của cùng chủ quán
+}
+
+export interface MerchantBriefDTO {
+  id: number
+  businessName: string
+}
+
+export interface BranchDTO {
+  id: number
+  name: string
+  address: string
+  openStatus: 'OPEN' | 'CLOSED' | 'TEMP_CLOSED'
 }
 
 export interface OptionDTO {
@@ -99,13 +115,15 @@ export async function fetchCuisines(): Promise<CuisineDTO[]> {
 
 export interface RestaurantSearchParams {
   keyword?: string
-  cuisine?: number
+  cuisineId?: number
   lat?: number
   lng?: number
+  page?: number   // bắt đầu từ 0
+  size?: number   // tối đa 50
 }
 
-export async function fetchRestaurants(params?: RestaurantSearchParams): Promise<RestaurantSummaryDTO[]> {
-  const res = await api.get<RestaurantSummaryDTO[]>('/restaurants', { params })
+export async function fetchRestaurants(params?: RestaurantSearchParams): Promise<PageResponse<RestaurantSummaryDTO>> {
+  const res = await api.get<PageResponse<RestaurantSummaryDTO>>('/restaurants', { params })
   return res.data
 }
 

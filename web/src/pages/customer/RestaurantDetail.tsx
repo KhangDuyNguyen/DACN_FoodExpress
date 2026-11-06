@@ -37,7 +37,11 @@ export default function RestaurantDetail() {
   )
 
   const isOpen = restaurant.openStatus === 'OPEN'
-  const currentCatId = activeCategory ?? menu?.categories[0]?.id ?? null
+  // Chuyển sang chi nhánh khác thì trang không bị tạo lại, activeCategory còn giữ id nhóm món của quán cũ.
+  // Id đó không có trong menu quán mới thì quay về nhóm món đầu tiên.
+  const currentCatId = menu?.categories.some(cat => cat.id === activeCategory)
+    ? activeCategory
+    : menu?.categories[0]?.id ?? null
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
@@ -90,6 +94,7 @@ export default function RestaurantDetail() {
 
           <p className="mt-1 text-sm text-gray-500">📍 {restaurant.address}</p>
           {restaurant.phone && <p className="text-sm text-gray-500">📞 {restaurant.phone}</p>}
+          <p className="text-sm text-gray-500">🏪 {restaurant.merchant.businessName}</p>
         </div>
       </div>
 
@@ -110,6 +115,24 @@ export default function RestaurantDetail() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Chi nhánh khác của cùng chủ quán */}
+      {restaurant.otherBranches.length > 0 && (
+        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+          <p className="mb-2 font-medium text-gray-700">🏪 Chi nhánh khác của {restaurant.merchant.businessName}</p>
+          <ul className="space-y-2 text-sm">
+            {restaurant.otherBranches.map(b => (
+              <li key={b.id}>
+                <Link to={`/restaurants/${b.id}`} className="font-medium text-orange-600 hover:underline">
+                  {b.name}
+                </Link>
+                <span className="text-gray-500"> · {b.address}</span>
+                {b.openStatus !== 'OPEN' && <span className="text-gray-400"> · Đã đóng</span>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

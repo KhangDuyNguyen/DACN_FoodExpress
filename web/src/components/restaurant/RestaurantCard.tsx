@@ -46,13 +46,20 @@ export default function RestaurantCard({ restaurant }: Props) {
         )}
 
         {/* Rating + thời gian */}
-        <div className="mt-2 flex items-center gap-3 text-sm text-gray-600">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
           <span className="flex items-center gap-1">
             ⭐ <span className="font-medium text-gray-800">{restaurant.avgRating.toFixed(1)}</span>
             <span className="text-gray-400">({restaurant.ratingCount})</span>
           </span>
           <span>·</span>
           <span>🕐 {restaurant.prepTimeMinutes} phút</span>
+          {/* Chỉ có khoảng cách khi người dùng bấm "Gần tôi" */}
+          {restaurant.distanceKm !== null && (
+            <>
+              <span>·</span>
+              <span>{restaurant.distanceKm.toLocaleString('vi-VN')} km</span>
+            </>
+          )}
         </div>
 
         {/* Địa chỉ */}
