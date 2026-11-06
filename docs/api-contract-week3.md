@@ -51,13 +51,18 @@ Bổ sung tuần 3:
 
 ## Module B: Nhà hàng và menu (`feature/week3-restaurant-menu`)
 
+> Đã làm. Nhánh này dựng trên nhánh `duongtuan3` của Dưỡng (chi tiết quán, menu, trang web), chỉ bổ sung phần thiếu.
+> Tên trường dưới đây là tên **thật** API đang trả (một vài chỗ khác bản đề xuất ban đầu để không phải sửa code đã có của Dưỡng).
+
 ### B1. Danh sách nhà hàng (đổi API cũ sang phân trang)
 
 `GET /api/restaurants?keyword=pho&cuisineId=1&lat=10.77&lng=106.70&page=0&size=10` (công khai)
 
 - `keyword`: tìm theo tên (LIKE, tham số hóa). `cuisineId`: lọc danh mục. Chỉ trả quán `status = ACTIVE`.
 - Có `lat`,`lng` → sắp xếp gần nhất trước (tính trong SQL bằng `ST_Distance_Sphere`, để phân trang đúng) và có `distanceKm`. Không có → sắp xếp `avgRating` giảm dần, `distanceKm = null`.
+- `page` ≥ 0, `size` từ 1 đến 50, `lat` từ -90 đến 90, `lng` từ -180 đến 180. Sai → 400.
 - **Thay đổi so với tuần 2**: tham số `cuisine` đổi thành `cuisineId`, kết quả từ mảng thành `PageResponse` (cần báo Dưỡng).
+- `cuisineId`/`cuisineName` là **một** loại món đại diện của quán (giữ như DTO của Dưỡng, thay cho mảng `cuisines` trong bản đề xuất).
 
 200:
 
@@ -65,13 +70,13 @@ Bổ sung tuần 3:
 {
   "items": [
     {
-      "id": 1, "name": "Phở 24 Nguyễn Trãi", "address": "5 Nguyễn Trãi, Quận 1",
-      "logoUrl": "https://...", "cuisines": ["Món Việt"],
+      "id": 1, "name": "Phở 24 Nguyễn Trãi", "cuisineId": 1, "cuisineName": "Món Việt",
+      "address": "5 Nguyễn Trãi, Quận 1", "lat": 10.77, "lng": 106.695, "logoUrl": "https://...",
       "avgRating": 4.5, "ratingCount": 320, "minOrderAmount": 30000,
       "prepTimeMinutes": 20, "openStatus": "OPEN", "distanceKm": 1.2
     }
   ],
-  "page": 0, "size": 10, "totalItems": 14, "totalPages": 2
+  "page": 0, "size": 10, "totalItems": 15, "totalPages": 2
 }
 ```
 
@@ -86,11 +91,11 @@ Bổ sung tuần 3:
   "id": 13, "name": "Cơm Nhà Demo - Chi nhánh Quận 1", "description": "...",
   "phone": "028...", "address": "...", "lat": 10.7712, "lng": 106.6981,
   "logoUrl": "...", "coverUrl": "...", "openStatus": "OPEN",
-  "minOrderAmount": 40000, "prepTimeMinutes": 15, "avgRating": 0.0, "ratingCount": 0,
-  "cuisines": [{ "id": 1, "name": "Món Việt" }],
-  "hours": [{ "dayOfWeek": 1, "openTime": "07:00", "closeTime": "21:00" }],
-  "merchant": { "id": 2, "businessName": "Công ty Cơm Nhà Demo" },
-  "otherBranches": [{ "id": 14, "name": "Cơm Nhà Demo - Chi nhánh Quận 3", "address": "..." }]
+  "minOrderAmount": 30000, "prepTimeMinutes": 15, "avgRating": 0.0, "ratingCount": 0,
+  "cuisines": [{ "id": 1, "name": "Món Việt", "iconUrl": "..." }],
+  "hours": [{ "dayOfWeek": 1, "openTime": "07:00:00", "closeTime": "21:00:00" }],
+  "merchant": { "id": 2, "businessName": "Cơm Nhà Demo" },
+  "otherBranches": [{ "id": 14, "name": "Cơm Nhà Demo - Chi nhánh Quận 3", "address": "...", "openStatus": "OPEN" }]
 }
 ```
 
@@ -98,17 +103,17 @@ Bổ sung tuần 3:
 
 ### B3. Menu theo nhà hàng (nhóm theo danh mục)
 
-`GET /api/restaurants/{id}/menu` (công khai). Chỉ danh mục `is_active = 1`, sắp theo `sort_order`. Món hết hàng vẫn trả về với `available: false` để web hiện "Hết món".
+`GET /api/restaurants/{id}/menu` (công khai, Dưỡng làm). Chỉ danh mục `is_active = 1`, sắp theo `sort_order`. Món hết hàng vẫn trả về với `isAvailable: false` để web hiện "Hết món". Mỗi món có sẵn `optionGroups` (tuần 3 seed chưa có tùy chọn nên là mảng rỗng).
 
 ```json
 {
   "restaurantId": 1,
   "categories": [
     {
-      "id": 1, "name": "Món chính",
+      "id": 1, "name": "Món chính", "sortOrder": 1,
       "items": [
         { "id": 1, "name": "Phở bò tái", "description": "...", "price": 55000,
-          "imageUrl": "...", "available": true }
+          "imageUrl": "...", "isAvailable": true, "sortOrder": 1, "optionGroups": [] }
       ]
     }
   ]
@@ -117,12 +122,12 @@ Bổ sung tuần 3:
 
 ### B4. Chi tiết món
 
-`GET /api/restaurants/{restaurantId}/menu-items/{itemId}` (công khai). 404 nếu món không thuộc quán đó.
+`GET /api/restaurants/{restaurantId}/menu-items/{itemId}` (công khai). 404 nếu món không thuộc quán đó, nhóm món bị tắt hoặc quán không `ACTIVE`.
 Đặt dưới `/api/restaurants/**` để dùng luôn quy tắc công khai sẵn có trong `SecurityConfig`.
 
 ```json
 { "id": 1, "restaurantId": 1, "categoryId": 1, "categoryName": "Món chính",
-  "name": "Phở bò tái", "description": "...", "price": 55000, "imageUrl": "...", "available": true }
+  "name": "Phở bò tái", "description": "...", "price": 55000, "imageUrl": "...", "isAvailable": true }
 ```
 
 ### B5. Quán của chủ quán đang đăng nhập (cần cho màn hình nhận đơn)
@@ -133,16 +138,18 @@ Bổ sung tuần 3:
 [{ "id": 13, "name": "Cơm Nhà Demo - Chi nhánh Quận 1", "address": "...", "openStatus": "OPEN", "status": "ACTIVE" }]
 ```
 
-### Seed (migration mới, không sửa V1/V2/V3)
+### Seed (`V20261107_01__seed_quan_demo_va_mon.sql`, không sửa V1/V2/V3)
 
-- Bổ sung món cho các quán đang dưới 10 món để **ít nhất 5 quán có từ 10 món trở lên**.
-- Thêm chủ quán thứ 2 (tên giả) có **2 chi nhánh**, mỗi chi nhánh ≥ 10 món, có 1 món `is_available = 0` để demo chặn món hết.
-- Thêm 1 dòng `delivery_fee_rules` (xem C3).
+- Bổ sung món cho quán 1, 3, 4, 5, 6 → cùng KFC là **6 quán cũ có từ 10 món trở lên**.
+- Chủ chuỗi 12 quán của V2 (`0901234567`) đổi từ hash giả sang hash thật của `Demo@12345`, nên đăng nhập được.
+- Chủ quán demo `0922000001`: thương hiệu "Cơm Nhà Demo" có **2 chi nhánh** (Quận 1, Quận 3), mỗi chi nhánh 11 món. Chi nhánh Quận 1 có món "Cơm gà xối mỡ" `is_available = 0` để demo chặn món hết. Món "Cơm bò lúc lắc" có giá khác nhau ở 2 chi nhánh.
+- Chủ quán demo `0922000002`: 1 quán "Bún Chả Demo", 10 món.
+- Dòng `delivery_fee_rules` chuyển sang Module C (đặt cạnh code tính phí ship).
 
 ### Web
 
-- Trang chủ `/` và `/restaurants`: ô tìm kiếm, chip danh mục, lưới thẻ quán, phân trang.
-- `/restaurants/:id`: thông tin quán, giờ mở cửa, chi nhánh khác, menu theo danh mục, nút "Thêm vào giỏ" (nút hoạt động ở Module C).
+- Trang chủ `/` chuyển sang `/restaurants`: ô tìm kiếm, chip danh mục, nút "Gần tôi" (hiện km), lưới thẻ quán, phân trang 12 quán/trang.
+- `/restaurants/:id`: thông tin quán, chủ quán, giờ mở cửa, chi nhánh khác (bấm để chuyển), menu theo danh mục, nút "+ Thêm" (hoạt động ở Module C).
 
 ---
 

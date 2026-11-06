@@ -44,13 +44,14 @@ Kết quả **201**:
 - Thành công trả **200**, nội dung giống kết quả đăng ký.
 - Sai tài khoản hoặc sai mật khẩu trả **401** với cùng một câu `"Sai tài khoản hoặc mật khẩu"`.
 - Mật khẩu đúng nhưng tài khoản `LOCKED`/`DELETED` trả **403** `"Tài khoản đã bị khóa"`.
-- User mẫu trong V2 (`0901234567`) có hash giả nên **không đăng nhập được**.
-- Tài khoản mẫu đăng nhập được (dữ liệu giả, file `V20261026_01__seed_tai_khoan_demo.sql`), mật khẩu chung `Demo@12345`:
+- Tài khoản mẫu đăng nhập được (dữ liệu giả, file `V20261026_01__seed_tai_khoan_demo.sql` và `V20261107_01__seed_quan_demo_va_mon.sql`), mật khẩu chung `Demo@12345`:
 
   | Vai trò | Số điện thoại | Ghi chú |
   |---|---|---|
   | CUSTOMER | `0911000001`, `0911000002` | 2 khách để test "không xem được đơn của người khác" |
-  | MERCHANT | `0922000001`, `0922000002` | Quán của từng người do seed của Dưỡng gắn vào |
+  | MERCHANT | `0901234567` | Chủ 12 quán seed V2 (trước đây hash giả, từ V20261107_01 đăng nhập được) |
+  | MERCHANT | `0922000001` | "Cơm Nhà Demo", 2 chi nhánh Quận 1 và Quận 3 |
+  | MERCHANT | `0922000002` | "Bún Chả Demo", 1 quán |
   | DRIVER | `0933000001` | Chưa có dòng `drivers` (phần của An) |
   | ADMIN | `0900000001` | |
   | CUSTOMER bị khóa | `0911000009` | Đăng nhập đúng mật khẩu vẫn trả 403 |

@@ -8,10 +8,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -40,6 +43,9 @@ class SecurityIntegrationTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @Autowired
+    NamedParameterJdbcTemplate jdbc;
 
     @Test
     void meWithoutTokenReturns401Json() throws Exception {
@@ -74,9 +80,14 @@ class SecurityIntegrationTest {
 
     @Test
     void loginWithInvalidBcryptHashInSeedDataReturns401NotServerError() throws Exception {
-        // User mau trong V2 (0901234567) co password_hash = '$2a$10$dummyhash', khong phai hash BCrypt hop le
+        // Seed V20261107_01 da doi hash cua user 0901234567 thanh hash that, nen tu tao 1 user co hash gia
+        // ('$2a$10$dummyhash' khong phai BCrypt hop le) de kiem tra van tra 401 chu khong 500
+        jdbc.update("""
+                INSERT INTO users (full_name, phone, password_hash, role)
+                VALUES ('Hash Gia', '0911999999', '$2a$10$dummyhash', 'CUSTOMER')
+                """, Map.of());
         String body = """
-                {"identifier":"0901234567","password":"matkhau123"}
+                {"identifier":"0911999999","password":"matkhau123"}
                 """;
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -100,7 +111,7 @@ class SecurityIntegrationTest {
     @Test
     void seededDemoAccountsCanLoginWithCorrectRole() throws Exception {
         String[][] accounts = {
-                {"0911000001", "CUSTOMER"}, {"0922000001", "MERCHANT"},
+                {"0911000001", "CUSTOMER"}, {"0922000001", "MERCHANT"}, {"0901234567", "MERCHANT"},
                 {"0933000001", "DRIVER"}, {"0900000001", "ADMIN"}
         };
         for (String[] account : accounts) {
@@ -155,7 +166,7 @@ class SecurityIntegrationTest {
 
     @Test
     void wrongParameterTypeReturns400ApiError() throws Exception {
-        mockMvc.perform(get("/api/restaurants").param("cuisine", "abc"))
+        mockMvc.perform(get("/api/restaurants").param("cuisineId", "abc"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400));
     }
