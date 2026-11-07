@@ -18,6 +18,9 @@ import vn.hutech.fooddelivery.user.dto.UserResponse;
 // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - REPOSITORY =====
 import vn.hutech.fooddelivery.driver.DriverRepository;
 // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - REPOSITORY =====
+// ===== BẮT ĐẦU BỔ SUNG - ĐIỆP: REGISTER MERCHANT - REPOSITORY =====
+import vn.hutech.fooddelivery.admin.AdminMerchantRepository;
+// ===== KẾT THÚC BỔ SUNG - ĐIỆP: REGISTER MERCHANT - REPOSITORY =====
 
 /** Nghiep vu dang ky va dang nhap. */
 @Service
@@ -32,11 +35,17 @@ public class AuthService {
     // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - DEPENDENCY =====
     private final DriverRepository driverRepository;
     // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - DEPENDENCY =====
+    // ===== BẮT ĐẦU BỔ SUNG - ĐIỆP: REGISTER MERCHANT - DEPENDENCY =====
+    private final AdminMerchantRepository adminMerchantRepository;
+    // ===== KẾT THÚC BỔ SUNG - ĐIỆP: REGISTER MERCHANT - DEPENDENCY =====
 
     public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService,
                        // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - INJECTION =====
-                       DriverRepository driverRepository
+                       DriverRepository driverRepository,
                        // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - INJECTION =====
+                       // ===== BẮT ĐẦU BỔ SUNG - ĐIỆP: REGISTER MERCHANT - INJECTION =====
+                       AdminMerchantRepository adminMerchantRepository
+                       // ===== KẾT THÚC BỔ SUNG - ĐIỆP: REGISTER MERCHANT - INJECTION =====
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -44,6 +53,9 @@ public class AuthService {
         // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - INJECTION =====
         this.driverRepository = driverRepository;
         // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - INJECTION =====
+        // ===== BẮT ĐẦU BỔ SUNG - ĐIỆP: REGISTER MERCHANT - INJECTION =====
+        this.adminMerchantRepository = adminMerchantRepository;
+        // ===== KẾT THÚC BỔ SUNG - ĐIỆP: REGISTER MERCHANT - INJECTION =====
     }
 
     @Transactional
@@ -73,6 +85,13 @@ public class AuthService {
             driverRepository.insert(id, req.vehicleType(), req.licensePlate());
         }
         // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER =====
+
+        // ===== BẮT ĐẦU BỔ SUNG - ĐIỆP: REGISTER MERCHANT =====
+        if ("MERCHANT".equals(req.role())) {
+            // Dung cung transaction dang ky; INSERT merchant o trang thai PENDING
+            adminMerchantRepository.insert(id, req.fullName().trim(), phone);
+        }
+        // ===== KẾT THÚC BỔ SUNG - ĐIỆP: REGISTER MERCHANT =====
 
         UserRow user = userRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy người dùng"));

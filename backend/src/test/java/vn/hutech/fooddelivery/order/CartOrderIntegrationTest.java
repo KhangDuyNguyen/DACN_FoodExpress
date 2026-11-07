@@ -178,6 +178,24 @@ class CartOrderIntegrationTest {
     }
 
     @Test
+    void approvedRestaurantCanBeOrderedButPendingCannot() throws Exception {
+        String token = login("0911000001");
+        clearCart(token);
+        // Com Nha Demo Quan 1 da la APPROVED (V20261107_03): them mon duoc
+        addItem(token, itemId(Q1, "Cơm sườn nướng"), 1, null, false).andExpect(status().isOk());
+        clearCart(token);
+
+        // Quan dang cho admin duyet (PENDING): khong them mon, khong dat duoc
+        jdbc.update("UPDATE restaurants SET status = 'PENDING' WHERE name = 'Bún Chả Demo'", Map.of());
+        try {
+            addItem(token, itemId("Bún Chả Demo", "Bún chả Hà Nội"), 1, null, false)
+                    .andExpect(status().isConflict());
+        } finally {
+            jdbc.update("UPDATE restaurants SET status = 'APPROVED' WHERE name = 'Bún Chả Demo'", Map.of());
+        }
+    }
+
+    @Test
     void cannotAddSoldOutItemOrItemOfClosedRestaurant() throws Exception {
         String token = login("0911000001");
         clearCart(token);

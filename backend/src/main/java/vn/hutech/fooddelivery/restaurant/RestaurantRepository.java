@@ -73,7 +73,7 @@ public class RestaurantRepository {
                 GROUP BY rc1.restaurant_id
             ) rc_first ON r.id = rc_first.restaurant_id
             LEFT JOIN cuisines c ON rc_first.cuisine_id = c.id
-            WHERE r.status = 'ACTIVE'
+            WHERE r.status IN ('APPROVED', 'ACTIVE')
                 AND (:keyword IS NULL OR r.name LIKE CONCAT('%', :keyword, '%'))
                 AND (:cuisineId IS NULL OR EXISTS (
                     SELECT 1 FROM restaurant_cuisines rc2
@@ -115,7 +115,7 @@ public class RestaurantRepository {
         String sql = """
             SELECT COUNT(*)
             FROM restaurants r
-            WHERE r.status = 'ACTIVE'
+            WHERE r.status IN ('APPROVED', 'ACTIVE')
                 AND (:keyword IS NULL OR r.name LIKE CONCAT('%', :keyword, '%'))
                 AND (:cuisineId IS NULL OR EXISTS (
                     SELECT 1 FROM restaurant_cuisines rc2
@@ -142,7 +142,7 @@ public class RestaurantRepository {
                    r.merchant_id, m.business_name
             FROM restaurants r
             JOIN merchants m ON m.id = r.merchant_id
-            WHERE r.id = :id AND r.status = 'ACTIVE'
+            WHERE r.id = :id AND r.status IN ('APPROVED', 'ACTIVE')
             """;
 
         List<Map<String, Object>> rows = jdbc.queryForList(sql,
@@ -179,14 +179,14 @@ public class RestaurantRepository {
         ));
     }
 
-    /** Các quán ACTIVE khác của cùng chủ quán (một chủ quán có nhiều chi nhánh, theo ERD). */
+    /** Các quán đang hiển thị (APPROVED hoặc ACTIVE) khác của cùng chủ quán (một chủ quán có nhiều chi nhánh, theo ERD). */
     private List<BranchDTO> findOtherBranches(long merchantId, long excludeRestaurantId) {
         String sql = """
             SELECT id, name, address, open_status
             FROM restaurants
             WHERE merchant_id = :merchantId
               AND id <> :excludeId
-              AND status = 'ACTIVE'
+              AND status IN ('APPROVED', 'ACTIVE')
             ORDER BY name
             """;
         MapSqlParameterSource params = new MapSqlParameterSource()
@@ -346,7 +346,7 @@ public class RestaurantRepository {
 
     /**
      * Món phải thuộc đúng quán trong URL (mc.restaurant_id = :restaurantId),
-     * nằm trong nhóm món đang bật và quán đang ACTIVE. Sai một điều kiện -> rỗng -> 404.
+     * nằm trong nhóm món đang bật và quán đang hiển thị (APPROVED hoặc ACTIVE). Sai một điều kiện -> rỗng -> 404.
      */
     public Optional<MenuItemDetailDTO> findMenuItem(long restaurantId, long itemId) {
         String sql = """
@@ -358,7 +358,7 @@ public class RestaurantRepository {
             WHERE mi.id = :itemId
               AND mc.restaurant_id = :restaurantId
               AND mc.is_active = 1
-              AND r.status = 'ACTIVE'
+              AND r.status IN ('APPROVED', 'ACTIVE')
             """;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("itemId", itemId)

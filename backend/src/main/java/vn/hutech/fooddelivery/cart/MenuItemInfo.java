@@ -14,8 +14,12 @@ public record MenuItemInfo(
         String restaurantOpenStatus
 ) {
 
-    /** Quan phai dang hoat dong (ACTIVE) va dang mo cua (OPEN) moi dat mon duoc. */
+    /**
+     * Quan phai da duoc duyet va dang mo cua (OPEN) moi dat mon duoc.
+     * Tu tuan 4 admin duyet quan thanh APPROVED (PR #16 cua Diep); ACTIVE la trang thai cu, van coi la da duyet.
+     */
     public boolean restaurantCanOrder() {
-        return "ACTIVE".equals(restaurantStatus) && "OPEN".equals(restaurantOpenStatus);
+        boolean approved = "APPROVED".equals(restaurantStatus) || "ACTIVE".equals(restaurantStatus);
+        return approved && "OPEN".equals(restaurantOpenStatus);
     }
 }
