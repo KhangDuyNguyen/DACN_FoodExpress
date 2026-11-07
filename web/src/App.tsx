@@ -5,6 +5,7 @@ import CustomerLayout from './layouts/CustomerLayout'
 import MerchantLayout from './layouts/MerchantLayout'
 
 // Khách hàng
+import Addresses from './pages/customer/Addresses'
 import Cart from './pages/customer/Cart'
 import Checkout from './pages/customer/Checkout'
 import CustomerHome from './pages/customer/CustomerHome'
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="orders" element={<MyOrders />} />
           <Route path="orders/:id" element={<OrderTracking />} />
           <Route path="orders/:id/success" element={<OrderSuccess />} />
+          <Route path="profile/addresses" element={<Addresses />} />
         </Route>
       </Route>
 
