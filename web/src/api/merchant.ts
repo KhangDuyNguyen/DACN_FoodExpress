@@ -94,11 +94,32 @@ export interface OptionDTO {
   sortOrder: number
 }
 
+
+export interface CreateRestaurantRequest {
+  name: string
+  description?: string
+  address: string
+  lat: number
+  lng: number
+  phone?: string
+  logoUrl?: string
+  coverUrl?: string
+  minOrderAmount: number
+  prepTimeMinutes: number
+}
+
 // ── API calls ──────────────────────────────────────────────────────────────
 
 // Lấy danh sách quán của merchant đang đăng nhập
 export async function fetchMyRestaurants(): Promise<MerchantRestaurantDTO[]> {
   const res = await api.get<MerchantRestaurantDTO[]>('/merchant/restaurants')
+  return res.data
+}
+
+
+// Tạo chi nhánh mới
+export async function createRestaurant(data: CreateRestaurantRequest): Promise<{ id: number }> {
+  const res = await api.post<{ id: number }>('/merchant/restaurants', data)
   return res.data
 }
 

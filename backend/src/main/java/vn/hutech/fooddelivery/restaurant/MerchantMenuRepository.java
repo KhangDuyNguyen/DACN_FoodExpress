@@ -287,4 +287,43 @@ public class MerchantMenuRepository {
     public void deleteOption(long optionId) {
         jdbc.update("DELETE FROM options WHERE id=:id", new MapSqlParameterSource("id", optionId));
     }
+
+    // ── Tạo chi nhánh mới ────────────────────────────────────────────────────
+
+    /** Lấy merchant_id từ user_id (JWT). Trả empty nếu user chưa có merchant profile. */
+    public Optional<Long> findMerchantIdByUserId(long userId) {
+        var rows = jdbc.queryForList(
+                "SELECT id FROM merchants WHERE owner_user_id = :uid",
+                new MapSqlParameterSource("uid", userId));
+        if (rows.isEmpty()) return Optional.empty();
+        return Optional.of(((Number) rows.get(0).get("id")).longValue());
+    }
+
+    public long createRestaurant(long merchantId, CreateRestaurantRequest req) {
+        String sql = """
+            INSERT INTO restaurants
+                (merchant_id, name, description, phone, address, lat, lng,
+                 logo_url, cover_url, min_order_amount, prep_time_minutes,
+                 open_status, status)
+            VALUES
+                (:merchantId, :name, :desc, :phone, :address, :lat, :lng,
+                 :logoUrl, :coverUrl, :minOrder, :prepTime,
+                 'CLOSED', 'PENDING')
+            """;
+        KeyHolder key = new GeneratedKeyHolder();
+        jdbc.update(sql, new MapSqlParameterSource()
+                .addValue("merchantId", merchantId)
+                .addValue("name", req.name())
+                .addValue("desc", req.description())
+                .addValue("phone", req.phone())
+                .addValue("address", req.address())
+                .addValue("lat", req.lat())
+                .addValue("lng", req.lng())
+                .addValue("logoUrl", req.logoUrl())
+                .addValue("coverUrl", req.coverUrl())
+                .addValue("minOrder", req.minOrderAmount())
+                .addValue("prepTime", req.prepTimeMinutes()), key);
+        return key.getKey().longValue();
+    }
+
 }

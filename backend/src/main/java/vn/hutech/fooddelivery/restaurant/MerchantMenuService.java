@@ -187,4 +187,15 @@ public class MerchantMenuService {
         repo.patchAvailability(itemId, isAvailable);
     }
 
+
+    // ── Tạo chi nhánh mới ────────────────────────────────────────────────────
+
+    @Transactional
+    public long createRestaurant(long ownerUserId, CreateRestaurantRequest req) {
+        long merchantId = repo.findMerchantIdByUserId(ownerUserId)
+                .orElseThrow(() -> new vn.hutech.fooddelivery.common.NotFoundException(
+                        "Tài khoản chưa có hồ sơ merchant. Liên hệ admin để được duyệt."));
+        return repo.createRestaurant(merchantId, req);
+    }
+
 }
