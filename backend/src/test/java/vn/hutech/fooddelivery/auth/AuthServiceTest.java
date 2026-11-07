@@ -52,6 +52,10 @@ class AuthServiceTest {
     @Mock
     DriverRepository driverRepository;
     // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - MOCK REPOSITORY =====
+    // ===== BẮT ĐẦU BỔ SUNG - ĐIỆP: REGISTER MERCHANT - MOCK REPOSITORY =====
+    @Mock
+    vn.hutech.fooddelivery.admin.AdminMerchantRepository adminMerchantRepository;
+    // ===== KẾT THÚC BỔ SUNG - ĐIỆP: REGISTER MERCHANT - MOCK REPOSITORY =====
 
     @InjectMocks
     AuthService authService;
