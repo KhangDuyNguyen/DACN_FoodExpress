@@ -13,8 +13,12 @@ public record RestaurantForOrder(
         BigDecimal minOrderAmount
 ) {
 
-    /** Quan phai dang hoat dong (ACTIVE) va dang mo cua (OPEN). */
+    /**
+     * Quan phai da duoc duyet va dang mo cua (OPEN).
+     * Tu tuan 4 admin duyet quan thanh APPROVED (PR #16 cua Diep); ACTIVE la trang thai cu, van coi la da duyet.
+     */
     public boolean canOrder() {
-        return "ACTIVE".equals(status) && "OPEN".equals(openStatus);
+        boolean approved = "APPROVED".equals(status) || "ACTIVE".equals(status);
+        return approved && "OPEN".equals(openStatus);
     }
 }
