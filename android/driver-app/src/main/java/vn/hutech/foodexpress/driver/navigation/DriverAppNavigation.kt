@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.lifecycle.Lifecycle
@@ -30,6 +31,17 @@ import vn.hutech.foodexpress.driver.ui.auth.DriverSessionScreen
 import vn.hutech.foodexpress.driver.ui.profile.DriverProfileScreen
 import vn.hutech.foodexpress.driver.ui.profile.DriverProfileViewModel
 import vn.hutech.foodexpress.driver.ui.dashboard.DriverDashboardViewModel
+import vn.hutech.foodexpress.driver.ui.dashboard.DriverOrderKnowledge
+import vn.hutech.foodexpress.driver.ui.offer.DriverOffersViewModel
+import vn.hutech.foodexpress.driver.ui.offer.DriverOfferDialog
+import vn.hutech.foodexpress.driver.ui.offer.DriverOfferStatusCard
+import vn.hutech.foodexpress.driver.ui.order.DriverCurrentOrderViewModel
+import vn.hutech.foodexpress.driver.ui.order.DriverCurrentOrderCard
+import vn.hutech.foodexpress.driver.ui.order.DriverCurrentOrderUiState
+import vn.hutech.foodexpress.driver.ui.order.DriverOrderDetailScreen
+import vn.hutech.foodexpress.driver.ui.order.GoogleMapsDirections
+import vn.hutech.foodexpress.driver.ui.order.forDriver
+import vn.hutech.foodexpress.driver.data.offer.OfferAction
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverOnboardingScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverPermissionIntroScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverSplashScreen
@@ -45,6 +57,7 @@ private const val PERMISSION_INTRO_ROUTE = "permission-intro"
 private const val LOGIN_ROUTE = "login"
 private const val SESSION_ROUTE = "driver-session"
 private const val PROFILE_ROUTE = "driver-profile"
+private const val ORDER_DETAIL_ROUTE = "driver-order-detail"
 private const val REGISTER_INTRO_ROUTE = "register-intro"
 private const val REGISTER_ACCOUNT_ROUTE = "register-account"
 private const val REGISTER_VEHICLE_ROUTE = "register-vehicle"
@@ -54,6 +67,7 @@ private val REGISTER_ROUTES = setOf(REGISTER_INTRO_ROUTE, REGISTER_ACCOUNT_ROUTE
 @Composable
 fun DriverAppNavigation() {
     val navController = rememberNavController()
+    val context = LocalContext.current
     // Activity owner supplies Hilt's default factory; no extra Hilt Navigation dependency.
     val auth: DriverAuthViewModel = viewModel()
     val state by auth.state.collectAsStateWithLifecycle()
@@ -63,22 +77,58 @@ fun DriverAppNavigation() {
     val profileState by profile.state.collectAsStateWithLifecycle()
     val dashboard: DriverDashboardViewModel = viewModel()
     val dashboardState by dashboard.state.collectAsStateWithLifecycle()
+    val offers: DriverOffersViewModel = viewModel()
+    val offerState by offers.state.collectAsStateWithLifecycle()
+    val orders: DriverCurrentOrderViewModel = viewModel()
+    val orderState by orders.state.collectAsStateWithLifecycle()
+    var foreground by androidx.compose.runtime.remember { mutableStateOf(false) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     var profileSessionNotice by rememberSaveable { mutableStateOf<String?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    val logout: () -> Unit = { dashboard.clear(); auth.logout() }
+    // Read live VM values at lifecycle/logout boundaries, not the last rendered frame.
+    val syncDeliveryKnowledge: () -> Unit = {
+        val session = auth.state.value
+        session.user?.id?.takeIf { session.phase == DriverAuthPhase.AUTHENTICATED }?.let { id ->
+            val current = orders.state.value
+            val decision = offers.state.value
+            val knowledge = when {
+                current.ownerId != id || !current.verified -> DriverOrderKnowledge.UNKNOWN
+                current.order != null -> DriverOrderKnowledge.ACTIVE
+                else -> DriverOrderKnowledge.IDLE
+            }
+            dashboard.updateDeliveryKnowledge(id, knowledge,
+                decision.pending?.action == OfferAction.ACCEPT || decision.acceptedOrderId != null)
+        }
+    }
+    val logout: () -> Unit = {
+        syncDeliveryKnowledge()
+        dashboard.clear() // Capture the old owner's policy/JWT before clearing other state.
+        orders.clear(); offers.clear(); auth.logout()
+    }
+
+    DisposableEffect(orders, offers) {
+        orders.connectOffers(offers)
+        onDispose { }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) dashboard.setForeground(true)
-            if (event == Lifecycle.Event.ON_STOP) dashboard.setForeground(false)
+            if (event == Lifecycle.Event.ON_START) { foreground = true; orders.setForeground(true); syncDeliveryKnowledge(); dashboard.setForeground(true); offers.setForeground(true) }
+            if (event == Lifecycle.Event.ON_STOP) { syncDeliveryKnowledge(); foreground = false; orders.setForeground(false); dashboard.setForeground(false); offers.setForeground(false) }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         dashboard.setForeground(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+        foreground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        offers.setForeground(foreground)
+        orders.setForeground(foreground)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            syncDeliveryKnowledge()
             dashboard.setForeground(false)
+            foreground = false
+            offers.setForeground(false)
+            orders.setForeground(false)
         }
     }
 
@@ -86,10 +136,29 @@ fun DriverAppNavigation() {
 
     LaunchedEffect(state.phase, state.user?.id) {
         when (state.phase) {
-            DriverAuthPhase.AUTHENTICATED -> state.user?.id?.let(dashboard::activateSession)
-            DriverAuthPhase.SIGNED_OUT -> dashboard.clear()
-            else -> dashboard.pauseSessionVerification()
+            DriverAuthPhase.AUTHENTICATED -> state.user?.id?.let { offers.activateSession(it); orders.activateSession(it); dashboard.activateSession(it); syncDeliveryKnowledge() }
+            DriverAuthPhase.SIGNED_OUT -> { dashboard.clear(); orders.clear(); offers.clear() }
+            else -> { dashboard.pauseSessionVerification(); orders.pauseSessionVerification(); offers.pauseSessionVerification() }
         }
+    }
+
+    LaunchedEffect(state.phase, state.user?.id, orderState.ownerId, orderState.verified, orderState.order?.orderId,
+        offerState.pending, offerState.acceptedOrderId) { syncDeliveryKnowledge() }
+
+    LaunchedEffect(dashboardState.offlineConflict) {
+        if (dashboardState.offlineConflict) orders.refresh()
+    }
+
+    LaunchedEffect(dashboardState.profile?.isOnline, dashboardState.profile?.status, dashboardState.statusUnknown,
+        dashboardState.saving, dashboardState.loading, dashboardState.orderKnowledge,
+        dashboardState.acceptPending, dashboardState.offlineConflict) {
+        offers.setOnline(dashboardState.profile?.isOnline == true && dashboardState.profile?.status == "APPROVED"
+            && !dashboardState.statusUnknown && !dashboardState.saving && !dashboardState.loading
+            && dashboardState.orderKnowledge == DriverOrderKnowledge.IDLE && !dashboardState.acceptPending
+            && !dashboardState.offlineConflict)
+    }
+    LaunchedEffect(offerState.sessionExpired, orderState.sessionExpired) {
+        if (offerState.sessionExpired || orderState.sessionExpired) auth.checkSession()
     }
 
     LaunchedEffect(currentRoute, state.phase) {
@@ -131,7 +200,7 @@ fun DriverAppNavigation() {
     LaunchedEffect(state.phase, currentRoute) {
         val destination = when {
             currentRoute == LOGIN_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED -> SESSION_ROUTE
-            currentRoute in setOf(SESSION_ROUTE, PROFILE_ROUTE) && state.phase == DriverAuthPhase.SIGNED_OUT -> LOGIN_ROUTE
+            currentRoute in setOf(SESSION_ROUTE, PROFILE_ROUTE, ORDER_DETAIL_ROUTE) && state.phase == DriverAuthPhase.SIGNED_OUT -> LOGIN_ROUTE
             else -> null
         }
         if (destination != null) {
@@ -239,8 +308,32 @@ fun DriverAppNavigation() {
         ) {
             DriverSessionScreen(state = state, onRetry = auth::checkSession, onLogout = logout,
                 onProfile = { navController.navigate(PROFILE_ROUTE) { launchSingleTop = true } },
-                dashboardState = dashboardState, onDashboardRetry = dashboard::load,
-                onReceivingOrders = dashboard::changeReceivingOrders, onGpsRetry = dashboard::refreshGps)
+                dashboardState = dashboardState, onDashboardRetry = { dashboard.load(); orders.refresh() },
+                onReceivingOrders = dashboard::changeReceivingOrders, onGpsRetry = dashboard::refreshGps,
+                offerContent = { if (offerState.acceptedOrderId == null) DriverOfferStatusCard(offerState, offers::retryPending, offers::refresh) },
+                currentOrderContent = {
+                    val visible = orderState.forDriver(state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED })
+                    DriverCurrentOrderCard(if (offerState.pending?.action == OfferAction.ACCEPT && visible.order == null)
+                        visible.copy(verified = false, error = "Kết quả Nhận đơn vẫn cần được xác minh bằng đúng thao tác trước đó.")
+                        else visible, orders::refresh, onOpenDetails = {
+                            val session = auth.state.value
+                            val current = orders.state.value.forDriver(session.user?.id?.takeIf { session.phase == DriverAuthPhase.AUTHENTICATED })
+                            if (current.verified && current.order != null && current.error == null)
+                                navController.navigate(ORDER_DETAIL_ROUTE) { launchSingleTop = true }
+                        })
+                },
+                orderRefreshing = orderState.loading)
+        }
+        composable(ORDER_DETAIL_ROUTE) {
+            DriverOrderDetailScreen(orderState,
+                authenticatedUserId = state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED },
+                onBack = { navController.popBackStack() },
+                onRetry = { if (auth.state.value.phase == DriverAuthPhase.AUTHENTICATED) orders.refresh() else auth.checkSession() },
+                onDirections = { target ->
+                    val session = auth.state.value
+                    GoogleMapsDirections.openCurrentOrder(context, orders.state.value,
+                        session.user?.id?.takeIf { session.phase == DriverAuthPhase.AUTHENTICATED }, target)
+                })
         }
         composable(
             PROFILE_ROUTE,
@@ -262,6 +355,9 @@ fun DriverAppNavigation() {
                     onReceivingOrders = dashboard::changeReceivingOrders, onGpsRetry = dashboard::refreshGps)
             }
         }
+    }
+    if (currentRoute == SESSION_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED && foreground) {
+        DriverOfferDialog(offerState, offers::accept, offers::reject, offers::refresh)
     }
 }
 
