@@ -60,17 +60,30 @@ Bên nghe dùng `@TransactionalEventListener(phase = AFTER_COMMIT)`: chỉ chạ
 
 ## Module G. Sổ địa chỉ có bản đồ
 
+> Đã làm (nhánh `feature/week4-address-map`). Code ở package `user` (`AddressController`, `AddressService`, `AddressRepository`).
+
 | Method | URL | Ghi chú |
 |---|---|---|
 | GET | `/api/users/me/addresses` | Địa chỉ của mình, mặc định lên đầu |
-| POST | `/api/users/me/addresses` | `{ label, receiverName, receiverPhone, addressLine, lat, lng, isDefault }` |
+| POST | `/api/users/me/addresses` | `{ label, receiverName, receiverPhone, addressLine, lat, lng, isDefault }` → 201 |
 | PUT | `/api/users/me/addresses/{id}` | Sửa; địa chỉ của người khác → 404 |
-| DELETE | `/api/users/me/addresses/{id}` | Xóa |
+| PATCH | `/api/users/me/addresses/{id}/default` | Đặt làm mặc định (thêm so với bản đề xuất, để web không phải gửi lại cả địa chỉ) |
+| DELETE | `/api/users/me/addresses/{id}` | Xóa → 204 |
 
-- Đặt 1 địa chỉ làm mặc định thì bỏ mặc định các địa chỉ khác (trong 1 transaction).
-- Web: trang `/profile/addresses` có **bản đồ Leaflet + OpenStreetMap, bấm để chọn điểm**, kèm nút "Dùng vị trí hiện tại" (geolocation của trình duyệt). Thư viện `leaflet` đã có trong kế hoạch web của An cho trang theo dõi đơn.
-- Trang thanh toán chọn từ sổ địa chỉ (mặc định chọn sẵn) thay cho 3 địa chỉ mẫu đang hard-code; phí ship tính lại theo điểm đã chọn.
-- Test: CRUD, quyền sở hữu (404), chỉ 1 địa chỉ mặc định.
+- Có ít nhất 1 địa chỉ thì luôn có đúng 1 địa chỉ mặc định:
+  - Địa chỉ đầu tiên tự thành mặc định.
+  - Đặt 1 địa chỉ làm mặc định thì bỏ mặc định các địa chỉ khác (trong 1 transaction).
+  - PUT với `isDefault: false` không bỏ mặc định; muốn đổi thì đặt địa chỉ khác làm mặc định.
+  - Xóa địa chỉ mặc định thì địa chỉ mới nhất còn lại thành mặc định.
+- `lat`, `lng` bắt buộc (cột trong V1 cho phép rỗng, nhưng cần tọa độ để tính phí ship).
+- Mọi câu SQL đều có `WHERE user_id = :userId`; địa chỉ của người khác trả 404, không lộ là có tồn tại.
+- Seed `V20261108_01__seed_dia_chi_demo.sql`: khách `0911000001` có 3 địa chỉ (đúng 3 địa chỉ mẫu cũ), khách `0911000002` có 1.
+- Web:
+  - Trang `/profile/addresses` (bấm tên khách trên header để vào): danh sách, thêm/sửa/xóa, đặt mặc định.
+  - Component `components/map/LocationPicker.tsx`: bản đồ Leaflet + OpenStreetMap, bấm để chọn điểm, nút "Dùng vị trí hiện tại". Điểm vẽ bằng `CircleMarker` nên không cần ảnh icon của Leaflet.
+  - Trang thanh toán chọn từ sổ địa chỉ (địa chỉ mặc định chọn sẵn), phí ship tính lại theo điểm đã chọn. Chưa có địa chỉ thì có link "Thêm địa chỉ", lưu xong tự quay lại trang thanh toán.
+  - Thư viện mới (khóa đúng phiên bản): `leaflet` 1.9.4, `react-leaflet` 5.0.0, `@types/leaflet` 1.9.22.
+- Test `AddressIntegrationTest` (6 test): danh sách seed, địa chỉ đầu tự mặc định và luôn chỉ 1 mặc định, sửa không làm mất mặc định, xóa mặc định thì chuyển cho địa chỉ mới nhất, khách khác sửa/xóa/đặt mặc định → 404, sai dữ liệu → 400, chưa đăng nhập → 401.
 
 ## Chuyển sang tuần 5 (theo kế hoạch chung)
 
