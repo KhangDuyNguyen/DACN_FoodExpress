@@ -48,6 +48,9 @@ export const MerchantLayout: React.FC = () => {
     if (path.startsWith('/merchant/revenue')) return '/merchant/revenue'
     if (path.startsWith('/merchant/top-dishes')) return '/merchant/top-dishes'
     if (path.startsWith('/merchant/support')) return '/merchant/support'
+    if (path.startsWith('/merchant/menu')) return '/merchant/menu'
+    if (path.startsWith('/merchant/settings')) return '/merchant/settings'
+    if (path.startsWith('/merchant/branch')) return '/merchant/branch'
     return '/merchant'
   }
 
@@ -58,6 +61,24 @@ export const MerchantLayout: React.FC = () => {
       icon: <DashboardOutlined />,
       label: 'Tổng quan quán',
       onClick: () => navigate('/merchant'),
+    },
+    {
+      key: '/merchant/branch',
+      icon: <BranchesOutlined />,
+      label: 'Chọn chi nhánh',
+      onClick: () => navigate('/merchant/branch'),
+    },
+    {
+      key: '/merchant/menu',
+      icon: <UnorderedListOutlined />,
+      label: 'Quản lý Menu',
+      onClick: () => navigate('/merchant/menu'),
+    },
+    {
+      key: '/merchant/settings',
+      icon: <SettingOutlined />,
+      label: 'Thông tin quán',
+      onClick: () => navigate('/merchant/settings'),
     },
     {
       key: '/merchant/orders',

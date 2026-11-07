@@ -18,7 +18,7 @@ import AdminOverviewPage from './pages/admin/AdminOverviewPage'
 import AdminSupportPage from './pages/admin/AdminSupportPage'
 import AdminVoucherPage from './pages/admin/AdminVoucherPage'
 
-// Cửa hàng (Merchant - Sầm Xuân Điệp phụ trách các trang đơn realtime, voucher, thống kê; Dưỡng phụ trách menu)
+// Cửa hàng (Merchant)
 import MenuManagement from './pages/merchant/MenuManagement'
 import MerchantOrdersPage from './pages/merchant/MerchantOrdersPage'
 import MerchantOverviewPage from './pages/merchant/MerchantOverviewPage'
@@ -26,12 +26,11 @@ import MerchantRevenuePage from './pages/merchant/MerchantRevenuePage'
 import MerchantSupportPage from './pages/merchant/MerchantSupportPage'
 import MerchantTopDishesPage from './pages/merchant/MerchantTopDishesPage'
 import MerchantVouchersPage from './pages/merchant/MerchantVouchersPage'
+// Tuần 4 - Dưỡng
+import BranchSelector from './pages/merchant/BranchSelector'
+import RestaurantSettings from './pages/merchant/RestaurantSettings'
+import { BranchProvider } from './pages/merchant/MerchantBranchContext'
 
-// Web gom 3 khu trong 1 project:
-//   /          -> khach hang
-//   /merchant  -> dashboard cua hang (chi MERCHANT, vi backend chi cho MERCHANT goi /api/merchant/**)
-//   /admin     -> quan tri (chi ADMIN)
-// Moi nguoi them route cua minh vao dung khu (xem README trong tung thu muc pages/).
 export default function App() {
   return (
     <Routes>
@@ -44,23 +43,26 @@ export default function App() {
         <Route path="restaurants/:id" element={<RestaurantDetail />} />
       </Route>
 
-      {/* Điều hướng đăng nhập cũ của Merchant về trang đăng nhập chung */}
+      {/* Điều hướng đăng nhập cũ về trang đăng nhập chung */}
       <Route path="merchant/login" element={<Navigate to="/login" replace />} />
 
-      {/* Khu vực Dashboard Cửa hàng (Được bảo vệ bởi JWT: Chỉ MERCHANT) */}
+      {/* Khu vực Dashboard Cửa hàng (Chỉ MERCHANT) */}
       <Route element={<ProtectedRoute roles={['MERCHANT']} />}>
-        <Route path="merchant" element={<MerchantLayout />}>
-          <Route index element={<MerchantOverviewPage />} />
-          <Route path="orders" element={<MerchantOrdersPage />} />
-          <Route path="menu" element={<MenuManagement />} />
-          <Route path="vouchers" element={<MerchantVouchersPage />} />
-          <Route path="revenue" element={<MerchantRevenuePage />} />
-          <Route path="top-dishes" element={<MerchantTopDishesPage />} />
-          <Route path="support" element={<MerchantSupportPage />} />
+        {/* BranchProvider bọc toàn bộ merchant để chia sẻ chi nhánh đang chọn */}
+        <Route element={<BranchProvider><MerchantLayout /></BranchProvider>}>
+          <Route path="merchant" element={<MerchantOverviewPage />} />
+          <Route path="merchant/branch" element={<BranchSelector />} />
+          <Route path="merchant/orders" element={<MerchantOrdersPage />} />
+          <Route path="merchant/menu" element={<MenuManagement />} />
+          <Route path="merchant/settings" element={<RestaurantSettings />} />
+          <Route path="merchant/vouchers" element={<MerchantVouchersPage />} />
+          <Route path="merchant/revenue" element={<MerchantRevenuePage />} />
+          <Route path="merchant/top-dishes" element={<MerchantTopDishesPage />} />
+          <Route path="merchant/support" element={<MerchantSupportPage />} />
         </Route>
       </Route>
 
-      {/* Khu vực Quản trị Admin (Được bảo vệ bởi JWT: Chỉ ADMIN) */}
+      {/* Khu vực Quản trị Admin (Chỉ ADMIN) */}
       <Route element={<ProtectedRoute roles={['ADMIN']} />}>
         <Route path="admin" element={<AdminLayout />}>
           <Route index element={<AdminOverviewPage />} />
