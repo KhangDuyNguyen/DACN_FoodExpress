@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { fetchRestaurantById } from '../../api/restaurants'
+import { fetchMyRestaurantDetail } from '../../api/merchant'
 import { updateRestaurant, updateHours, updateOpenStatus } from '../../api/merchant'
 import type { HourEntry } from '../../api/merchant'
 import { useBranch } from './MerchantBranchContext'
@@ -34,7 +34,7 @@ export default function RestaurantSettings() {
 
   const { data: restaurant, isLoading } = useQuery({
     queryKey: ['restaurantDetail', rid],
-    queryFn: () => fetchRestaurantById(rid),
+    queryFn: () => fetchMyRestaurantDetail(rid),
   })
 
   // ── Form thông tin quán ──

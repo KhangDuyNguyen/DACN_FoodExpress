@@ -10,6 +10,25 @@ export interface MerchantRestaurantDTO {
   status: 'PENDING' | 'ACTIVE' | 'HIDDEN' | 'SUSPENDED'
 }
 
+// Chi tiết quán cho merchant (không lọc status)
+export interface RestaurantDetailForMerchant {
+  id: number
+  name: string
+  description: string | null
+  phone: string | null
+  address: string
+  lat: number
+  lng: number
+  logoUrl: string | null
+  coverUrl: string | null
+  avgRating: number
+  ratingCount: number
+  minOrderAmount: number
+  prepTimeMinutes: number
+  openStatus: 'OPEN' | 'CLOSED' | 'TEMP_CLOSED'
+  hours: { dayOfWeek: number; openTime: string; closeTime: string }[]
+}
+
 export interface UpdateRestaurantRequest {
   name: string
   description?: string
@@ -116,6 +135,12 @@ export async function fetchMyRestaurants(): Promise<MerchantRestaurantDTO[]> {
   return res.data
 }
 
+
+// Chi tiết quán cho merchant (dùng trong Settings - không lọc status ACTIVE)
+export async function fetchMyRestaurantDetail(id: number): Promise<RestaurantDetailForMerchant> {
+  const res = await api.get<RestaurantDetailForMerchant>(`/merchant/restaurants/${id}`)
+  return res.data
+}
 
 // Tạo chi nhánh mới
 export async function createRestaurant(data: CreateRestaurantRequest): Promise<{ id: number }> {

@@ -1,5 +1,6 @@
 package vn.hutech.fooddelivery.restaurant.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -14,6 +15,6 @@ public record MenuItemRequest(
         @Size(max = 1000) String description,
         @NotNull @Min(0) Long price,
         @Size(max = 500) String imageUrl,
-        boolean isAvailable,
+        @JsonProperty("isAvailable") boolean isAvailable,
         @Min(0) int sortOrder
 ) {}

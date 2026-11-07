@@ -8,6 +8,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import vn.hutech.fooddelivery.restaurant.dto.CreateRestaurantRequest;
 import vn.hutech.fooddelivery.restaurant.dto.MerchantRestaurantDTO;
+import vn.hutech.fooddelivery.restaurant.dto.RestaurantDetailDTO;
 import vn.hutech.fooddelivery.security.AuthUser;
 
 import java.net.URI;
@@ -41,7 +42,16 @@ public class MerchantRestaurantController {
         return ResponseEntity.ok(restaurantService.getRestaurantsOfOwner(user.id()));
     }
 
-    @PostMapping
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Chi tiết quán của merchant (không lọc status, xem được quán PENDING/HIDDEN)")
+    public ResponseEntity<RestaurantDetailDTO> myRestaurantDetail(
+            @PathVariable long id,
+            @AuthenticationPrincipal AuthUser user) {
+        return ResponseEntity.ok(restaurantService.getRestaurantByIdForMerchant(id, user.id()));
+    }
+
+        @PostMapping
     @Operation(summary = "Tạo chi nhánh mới",
                description = "Quán mới sẽ có status=PENDING, cần admin duyệt trước khi hiển thị cho khách")
     public ResponseEntity<Map<String, Long>> createRestaurant(

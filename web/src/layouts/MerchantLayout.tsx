@@ -26,6 +26,9 @@ import {
   ShopOutlined,
   UserOutlined,
   BellOutlined,
+  BranchesOutlined,
+  UnorderedListOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
