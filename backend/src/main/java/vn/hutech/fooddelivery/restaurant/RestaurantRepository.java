@@ -379,7 +379,70 @@ public class RestaurantRepository {
     // ── Quán của chủ quán đang đăng nhập ──────────────────────────────────────
 
     /** Mọi quán (kể cả chưa duyệt / đang ẩn) thuộc chủ quán có users.id = ownerUserId. */
-    public List<MerchantRestaurantDTO> findByOwnerUserId(long ownerUserId) {
+
+    /**
+     * Lấy chi tiết quán cho merchant - không lọc status (có thể PENDING/HIDDEN).
+     * Kiểm tra ownership bên Service trước khi gọi.
+     */
+
+    /** Đếm quán theo id và owner user_id - dùng để kiểm tra ownership không lộ quán của merchant khác */
+    public long countByIdAndOwnerUserId(long restaurantId, long ownerUserId) {
+        String sql = """
+            SELECT COUNT(*) FROM restaurants r
+            JOIN merchants m ON m.id = r.merchant_id
+            WHERE r.id = :restaurantId AND m.owner_user_id = :ownerUserId
+            """;
+        Long count = jdbc.queryForObject(sql,
+                new MapSqlParameterSource()
+                        .addValue("restaurantId", restaurantId)
+                        .addValue("ownerUserId", ownerUserId),
+                Long.class);
+        return count != null ? count : 0L;
+    }
+
+        public Optional<RestaurantDetailDTO> findByIdForMerchant(long id) {
+        String sql = """
+            SELECT r.id, r.name, r.description, r.phone, r.address,
+                   r.lat, r.lng, r.logo_url, r.cover_url,
+                   r.avg_rating, r.rating_count,
+                   r.min_order_amount, r.prep_time_minutes, r.open_status,
+                   r.merchant_id, m.business_name
+            FROM restaurants r
+            JOIN merchants m ON m.id = r.merchant_id
+            WHERE r.id = :id
+            """;
+        List<Map<String, Object>> rows = jdbc.queryForList(sql,
+                new MapSqlParameterSource("id", id));
+        if (rows.isEmpty()) return Optional.empty();
+        Map<String, Object> row = rows.get(0);
+        List<CuisineDTO> cuisines = findCuisinesByRestaurantId(id);
+        List<RestaurantHoursDTO> hours = findHoursByRestaurantId(id);
+        long merchantId = toLong(row.get("merchant_id"));
+        MerchantBriefDTO merchant = new MerchantBriefDTO(merchantId, (String) row.get("business_name"));
+        List<BranchDTO> otherBranches = findOtherBranches(merchantId, id);
+        return Optional.of(new RestaurantDetailDTO(
+                toLong(row.get("id")),
+                (String) row.get("name"),
+                (String) row.get("description"),
+                (String) row.get("phone"),
+                (String) row.get("address"),
+                ((Number) row.get("lat")).doubleValue(),
+                ((Number) row.get("lng")).doubleValue(),
+                (String) row.get("logo_url"),
+                (String) row.get("cover_url"),
+                ((Number) row.get("avg_rating")).doubleValue(),
+                toInt(row.get("rating_count")),
+                toLong(row.get("min_order_amount")),
+                toInt(row.get("prep_time_minutes")),
+                (String) row.get("open_status"),
+                cuisines,
+                hours,
+                merchant,
+                otherBranches
+        ));
+    }
+
+        public List<MerchantRestaurantDTO> findByOwnerUserId(long ownerUserId) {
         String sql = """
             SELECT r.id, r.name, r.address, r.open_status, r.status
             FROM restaurants r
