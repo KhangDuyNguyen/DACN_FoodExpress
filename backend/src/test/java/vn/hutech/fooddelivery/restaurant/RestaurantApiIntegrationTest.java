@@ -16,6 +16,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -134,6 +135,28 @@ class RestaurantApiIntegrationTest {
     }
 
     // ----- B2, B3, B4: chi tiet quan, menu, chi tiet mon -----
+
+    @Test
+    void approvedRestaurantIsVisibleButPendingIsNot() throws Exception {
+        // Sau V20261106_01 (Diep) va V20261107_03, moi quan seed deu la APPROVED
+        long pho24 = restaurantId("Phở 24 Nguyễn Trãi");
+        assertEquals("APPROVED", jdbc.queryForObject("SELECT status FROM restaurants WHERE id = :id",
+                Map.of("id", pho24), String.class));
+        mockMvc.perform(get("/api/restaurants/{id}", pho24))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Phở 24 Nguyễn Trãi"));
+
+        // Quan chua duoc admin duyet thi khach khong thay
+        jdbc.update("UPDATE restaurants SET status = 'PENDING' WHERE id = :id", Map.of("id", pho24));
+        try {
+            mockMvc.perform(get("/api/restaurants/{id}", pho24))
+                    .andExpect(status().isNotFound());
+            mockMvc.perform(get("/api/restaurants").param("keyword", "Phở 24"))
+                    .andExpect(jsonPath("$.totalItems").value(0));
+        } finally {
+            jdbc.update("UPDATE restaurants SET status = 'APPROVED' WHERE id = :id", Map.of("id", pho24));
+        }
+    }
 
     @Test
     void detailShowsMerchantAndOtherBranches() throws Exception {

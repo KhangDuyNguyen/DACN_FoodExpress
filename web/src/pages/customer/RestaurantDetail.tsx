@@ -1,8 +1,11 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchRestaurantById, fetchRestaurantMenu } from '../../api/restaurants'
 import type { MenuItemDTO, OptionGroupDTO } from '../../api/restaurants'
+import { addCartItem, cartQueryKey, fetchCart } from '../../api/cart'
+import { getApiError } from '../../api/apiError'
+import { useAuth } from '../../auth/useAuth'
 
 // Tên ngày trong tuần (1=Thứ 2 ... 7=Chủ nhật)
 const DAY_NAMES: Record<number, string> = {
@@ -26,6 +29,45 @@ export default function RestaurantDetail() {
     queryFn: () => fetchRestaurantMenu(restaurantId),
     enabled: !!restaurantId,
   })
+
+  // ── Thêm vào giỏ (Khang, Module C) ──
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const queryClient = useQueryClient()
+  const [cartError, setCartError] = useState<string | null>(null)
+  const isCustomer = user?.role === 'CUSTOMER'
+
+  const { data: cart } = useQuery({ queryKey: cartQueryKey, queryFn: fetchCart, enabled: isCustomer })
+
+  const addMutation = useMutation({
+    mutationFn: addCartItem,
+    onSuccess: (newCart) => {
+      queryClient.setQueryData(cartQueryKey, newCart)
+      setCartError(null)
+    },
+    onError: (error) => setCartError(getApiError(error).message),
+  })
+
+  function handleAdd(item: MenuItemDTO) {
+    if (!user) {
+      navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)
+      return
+    }
+    if (!isCustomer) {
+      setCartError('Chỉ tài khoản khách hàng mới đặt món được')
+      return
+    }
+    // Giỏ chỉ chứa món của 1 quán: đang có món quán khác thì hỏi trước khi thay giỏ
+    let replaceCart = false
+    if (cart?.restaurantId && cart.restaurantId !== restaurantId) {
+      if (!window.confirm(`Giỏ hàng đang có món của "${cart.restaurantName}". Xóa giỏ cũ để thêm món của quán này?`)) {
+        return
+      }
+      replaceCart = true
+    }
+    addMutation.mutate({ menuItemId: item.id, quantity: 1, replaceCart })
+  }
 
   if (loadingInfo) return <LoadingSkeleton />
   if (errorInfo || !restaurant) return (
@@ -177,20 +219,38 @@ export default function RestaurantDetail() {
               .map(cat => (
                 <div key={cat.id} className="mt-4 space-y-3">
                   {cat.items.map(item => (
-                    <MenuItemCard key={item.id} item={item} />
+                    <MenuItemCard
+                      key={item.id}
+                      item={item}
+                      adding={addMutation.isPending}
+                      onAdd={() => handleAdd(item)}
+                    />
                   ))}
                 </div>
               ))}
           </>
         )}
       </div>
+
+      {/* Lỗi khi thêm món (món hết, quán đóng...) và thanh giỏ hàng của quán này */}
+      {cartError && <p className="mt-4 rounded bg-red-50 p-2 text-sm text-red-700">{cartError}</p>}
+      {cart && cart.restaurantId === restaurantId && cart.itemCount > 0 && (
+        <div className="sticky bottom-4 mt-6 flex items-center justify-between rounded-xl bg-orange-600 px-4 py-3 text-white shadow-lg">
+          <span>
+            🛒 {cart.itemCount} phần · {cart.subtotal.toLocaleString('vi-VN')}đ
+          </span>
+          <Link to="/cart" className="rounded-lg bg-white px-3 py-1 text-sm font-medium text-orange-600 hover:bg-orange-50">
+            Xem giỏ hàng
+          </Link>
+        </div>
+      )}
     </div>
   )
 }
 
 // ── MenuItemCard ──────────────────────────────────────────────────────────
 
-function MenuItemCard({ item }: { item: MenuItemDTO }) {
+function MenuItemCard({ item, adding, onAdd }: { item: MenuItemDTO; adding: boolean; onAdd: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const hasOptions = item.optionGroups.length > 0
 
@@ -241,7 +301,8 @@ function MenuItemCard({ item }: { item: MenuItemDTO }) {
             {item.price.toLocaleString('vi-VN')}đ
           </span>
           <button
-            disabled={!item.isAvailable}
+            onClick={onAdd}
+            disabled={!item.isAvailable || adding}
             className="rounded-full bg-orange-500 px-3 py-1 text-sm font-medium text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
             + Thêm

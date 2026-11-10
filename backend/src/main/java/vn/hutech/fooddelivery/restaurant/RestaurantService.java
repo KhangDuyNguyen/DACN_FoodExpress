@@ -68,7 +68,7 @@ public class RestaurantService {
 
     /**
      * Chi tiết một món. Món không có, không thuộc quán này, nhóm món bị tắt
-     * hoặc quán không ACTIVE thì đều trả 404.
+     * hoặc quán chưa được duyệt (không phải APPROVED/ACTIVE) thì đều trả 404.
      */
     @Transactional(readOnly = true)
     public MenuItemDetailDTO getMenuItem(long restaurantId, long itemId) {
