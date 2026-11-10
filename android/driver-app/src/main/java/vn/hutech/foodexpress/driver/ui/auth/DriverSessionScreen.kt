@@ -31,9 +31,13 @@ fun DriverSessionScreen(
     onDashboardRetry: () -> Unit,
     onReceivingOrders: (Boolean) -> Unit,
     onGpsRetry: () -> Unit,
+    offerContent: @Composable () -> Unit = {},
+    currentOrderContent: @Composable () -> Unit = {},
+    orderRefreshing: Boolean = false,
 ) {
     if (state.phase == DriverAuthPhase.AUTHENTICATED) {
-        DriverDashboardScreen(dashboardState, onDashboardRetry, onReceivingOrders, onProfile, onLogout, onGpsRetry)
+        DriverDashboardScreen(dashboardState, onDashboardRetry, onReceivingOrders, onProfile, onLogout, onGpsRetry,
+            offerContent, currentOrderContent, orderRefreshing)
         return
     }
     Column(

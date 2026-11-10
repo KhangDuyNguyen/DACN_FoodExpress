@@ -91,6 +91,15 @@ public class DriverRepository {
         return jdbc.update(sql, Map.of("driverId", driverId, "isOnline", isOnline));
     }
 
+    // Read after acquiring Driver lock, in READ_COMMITTED; no Order row/gap locks.
+    public boolean hasActiveOrder(long driverId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM orders
+                               WHERE driver_id = :driverId
+                                 AND status NOT IN ('DELIVERED', 'CANCELLED', 'REJECTED'))
+                """, Map.of("driverId", driverId), Boolean.class));
+    }
+
     /** Goi trong transaction dang ky cua AuthService; khong tao toa do hay bat Online. */
     public void insert(long userId, String vehicleType, String licensePlate) {
         String sql = """

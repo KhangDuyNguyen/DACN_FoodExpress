@@ -3,6 +3,8 @@ package vn.hutech.fooddelivery.driver;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
@@ -72,7 +74,9 @@ public class DriverService {
         return new DriverLocationResponse(lat, lng, recordedAt);
     }
 
-    @Transactional
+    // Independent READ_COMMITTED avoids inheriting an earlier caller snapshot.
+    // Driver is the shared mutex with Accept; never lock Order after Driver here.
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
     public DriverStatusResponse updateStatus(long userId, DriverStatusRequest request) {
         // Giu khoa den khi commit: Admin/location request khong chen thay doi giua kiem tra va UPDATE.
         var driver = driverRepository.findStatusByUserIdForUpdate(userId)
@@ -97,6 +101,9 @@ public class DriverService {
         }
         if (driver.isOnline() == online) {
             return new DriverStatusResponse(driver.isOnline());
+        }
+        if (!online && driverRepository.hasActiveOrder(driver.id())) {
+            throw new ConflictException("Tài xế đang thực hiện đơn hàng, chưa thể tắt nhận đơn");
         }
         if (driverRepository.updateOnline(driver.id(), online) != 1) {
             throw new ConflictException("Không thể cập nhật trạng thái. Vui lòng tải lại hồ sơ");

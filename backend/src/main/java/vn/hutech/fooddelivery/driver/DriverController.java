@@ -124,7 +124,7 @@ public class DriverController {
 
     @PatchMapping("/status")
     @Operation(summary = "Bật/tắt nhận đơn của tài xế đang đăng nhập",
-            description = "Online: APPROVED, tọa độ hợp lệ, thời gian vị trí từ 0 đến 60 giây trước (gồm 60), theo giờ Backend đến giây. Offline không yêu cầu GPS. Không tự động Offline khi mất kết nối.")
+            description = "Online: APPROVED, tọa độ hợp lệ, thời gian vị trí từ 0 đến 60 giây trước (gồm 60), theo giờ Backend đến giây. Offline không yêu cầu GPS; chuyển Online sang Offline bị từ chối khi có đơn hoạt động. OFF lặp khi đã Offline vẫn idempotent. Không tự động Offline khi mất kết nối.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Trạng thái nhận đơn đã lưu",
                     content = @Content(schema = @Schema(implementation = DriverStatusResponse.class))),
@@ -136,7 +136,7 @@ public class DriverController {
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "404", description = "Không tìm thấy hồ sơ tài xế",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
-            @ApiResponse(responseCode = "409", description = "Vị trí thiếu, không hợp lệ, cũ quá 60 giây hoặc trong tương lai",
+            @ApiResponse(responseCode = "409", description = "Vị trí thiếu, không hợp lệ, cũ quá 60 giây hoặc trong tương lai; hoặc đang có đơn hoạt động khi chuyển Offline",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "500", description = "Lỗi lưu trạng thái",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))

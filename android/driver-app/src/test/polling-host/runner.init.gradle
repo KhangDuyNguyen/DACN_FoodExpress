@@ -1,0 +1,11 @@
+// Select the isolated polling runner for this test build only. Keep build.gradle.kts unchanged.
+allprojects { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        if (project.path == ':driver-app') {
+            project.extensions.getByName('androidComponents').finalizeDsl { android ->
+                android.defaultConfig.testInstrumentationRunner =
+                        'vn.hutech.foodexpress.driver.offer.OfferPollingInstrumentation'
+            }
+        }
+    }
+}
