@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
+  Empty,
   Input,
   Modal,
   Select,
@@ -17,6 +19,7 @@ import {
   CheckCircleOutlined,
   SyncOutlined,
   CloseCircleOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -28,7 +31,8 @@ import {
   fetchMerchantOrders,
   fetchMyRestaurants,
 } from '../../api/merchantOrders'
-import { statusLabel, type OrderStatus, type OrderSummary } from '../../api/orders'
+import { statusLabel, type MerchantOrderSummary, type OrderStatus } from '../../api/orders'
+import type { PageResponse } from '../../api/page'
 
 // Man hinh nhan don va doi trang thai voi cap nhat thoi gian thuc qua WebSocket STOMP
 const { Title, Text } = Typography
@@ -99,7 +103,7 @@ export const MerchantOrdersPage: React.FC = () => {
   const [tab, setTab] = useState<OrderStatus | 'ALL'>('PLACED')
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState<number | null>(null)
-  const [cancelTarget, setCancelTarget] = useState<OrderSummary | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<MerchantOrderSummary | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('Connecting')
 
@@ -124,7 +128,7 @@ export const MerchantOrdersPage: React.FC = () => {
     restaurantsRef.current = restaurants
   }, [restaurants])
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['merchant-orders', restaurantId, tab, page],
     queryFn: () =>
       fetchMerchantOrders({ restaurantId, status: tab === 'ALL' ? undefined : tab, page, size: PAGE_SIZE }),
@@ -162,7 +166,7 @@ export const MerchantOrdersPage: React.FC = () => {
       }
 
       // Tranh trung lap bang bo nho tam processedOrderIds
-      const orderKey = orderData?.orderId ?? orderData?.id ?? orderData?.code
+      const orderKey = orderData?.id ?? orderData?.orderId ?? orderData?.code
       if (orderKey) {
         if (processedOrderIdsRef.current.has(orderKey)) {
           return
@@ -174,8 +178,38 @@ export const MerchantOrdersPage: React.FC = () => {
         }
       }
 
+      const incomingRestaurantId = orderData?.restaurantId ?? orderData?.restaurant?.id
+      const currentFilterRestaurantId = restaurantIdRef.current
+
+      // Cap nhat cache ngay lap tuc cho trang 0 cua tab PLACED va ALL neu phu hop bo loc
+      if (orderData && typeof orderData.id === 'number') {
+        const incomingOrder = orderData as MerchantOrderSummary
+        const matchesFilter =
+          currentFilterRestaurantId === undefined || currentFilterRestaurantId === incomingOrder.restaurantId
+        if (matchesFilter) {
+          (['PLACED', 'ALL'] as const).forEach((targetTab) => {
+            queryClientRef.current.setQueryData<PageResponse<MerchantOrderSummary>>(
+              ['merchant-orders', currentFilterRestaurantId, targetTab, 0],
+              (old) => {
+                if (!old) return old
+                if (old.items.some((item) => item.id === incomingOrder.id)) {
+                  return old
+                }
+                const nextItems = [incomingOrder, ...old.items].slice(0, PAGE_SIZE)
+                return {
+                  ...old,
+                  items: nextItems,
+                  totalItems: old.totalItems + 1,
+                }
+              }
+            )
+          })
+        }
+      }
+
       const orderCode = orderData?.code ? `Đơn hàng ${orderData.code}` : orderKey ? `Đơn hàng #${orderKey}` : 'Đơn hàng mới'
-      const restaurantName = orderData?.restaurantName ? ` tại ${orderData.restaurantName}` : ''
+      const rawRestaurantName = orderData?.restaurantName ?? orderData?.restaurant?.name
+      const restaurantName = rawRestaurantName ? ` tại ${rawRestaurantName}` : ''
       const amountStr = orderData?.totalAmount ? ` (${vnd(Number(orderData.totalAmount))})` : ''
 
       notification.info({
@@ -188,6 +222,13 @@ export const MerchantOrdersPage: React.FC = () => {
             type="primary"
             size="small"
             onClick={() => {
+              if (
+                currentFilterRestaurantId !== undefined &&
+                typeof incomingRestaurantId === 'number' &&
+                currentFilterRestaurantId !== incomingRestaurantId
+              ) {
+                setRestaurantId(incomingRestaurantId)
+              }
               setTab('PLACED')
               setPage(0)
               queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
@@ -199,7 +240,7 @@ export const MerchantOrdersPage: React.FC = () => {
         ),
       })
 
-      // Invalidate queries de cap nhat bang ngay lap tuc ma khong can reload trang
+      // Invalidate queries de dong bo tong so don va phan trang voi backend
       queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
     } catch (err) {
       console.error('Lỗi xử lý sự kiện đơn hàng WebSocket:', err)
@@ -304,10 +345,11 @@ export const MerchantOrdersPage: React.FC = () => {
     }
   }, [restaurantId, restaurants])
 
-  const columns: ColumnsType<OrderSummary> = [
+  const columns: ColumnsType<MerchantOrderSummary> = [
     {
       title: 'Mã đơn',
       key: 'code',
+      width: 165,
       render: (_, o) => (
         <div>
           <Text strong>{o.code}</Text>
@@ -316,34 +358,98 @@ export const MerchantOrdersPage: React.FC = () => {
               {new Date(o.createdAt).toLocaleString('vi-VN')}
             </Text>
           </div>
-        </div>
-      ),
-    },
-    { title: 'Chi nhánh', dataIndex: 'restaurantName', key: 'restaurantName' },
-    {
-      title: 'Giao đến',
-      key: 'receiver',
-      render: (_, o) => (
-        <div>
-          <Text>{o.receiverName}</Text>
-          <div>
+          <div style={{ marginTop: 2 }}>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {o.deliveryAddress}
+              {o.restaurantName}
             </Text>
           </div>
         </div>
       ),
     },
-    { title: 'Số phần', dataIndex: 'itemCount', key: 'itemCount', align: 'center' },
-    { title: 'Tổng tiền', key: 'total', align: 'right', render: (_, o) => vnd(o.totalAmount) },
+    {
+      title: 'Món ăn & Số lượng',
+      key: 'items',
+      width: 260,
+      render: (_, o) => (
+        <div>
+          {o.items && o.items.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {o.items.map((item, idx) => (
+                <div key={`${o.id}-item-${item.menuItemId ?? idx}`} style={{ fontSize: 13 }}>
+                  <Text strong>{item.quantity}×</Text> {item.name}{' '}
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    ({vnd(item.unitPrice)})
+                  </Text>
+                  {item.note && (
+                    <div>
+                      <Text type="warning" style={{ fontSize: 12 }}>
+                        · {item.note}
+                      </Text>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Text>{o.itemCount} phần</Text>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: 'Giao đến & Ghi chú',
+      key: 'receiver',
+      width: 250,
+      render: (_, o) => (
+        <div>
+          <Text strong>{o.receiverName}</Text>
+          {o.receiverPhone && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {' · '}
+              {o.receiverPhone}
+            </Text>
+          )}
+          <div>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {o.deliveryAddress}
+            </Text>
+          </div>
+          {o.note && (
+            <div style={{ marginTop: 4 }}>
+              <Tag color="gold" style={{ whiteSpace: 'normal', marginInlineEnd: 0 }}>
+                Ghi chú: {o.note}
+              </Tag>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: 'Tổng tiền',
+      key: 'total',
+      align: 'right',
+      width: 125,
+      render: (_, o) => (
+        <div>
+          <Text strong>{vnd(o.totalAmount)}</Text>
+          <div>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {o.paymentMethod ?? 'COD'}
+            </Text>
+          </div>
+        </div>
+      ),
+    },
     {
       title: 'Trạng thái',
       key: 'status',
+      width: 130,
       render: (_, o) => <Tag color={STATUS_COLOR[o.status]}>{statusLabel(o.status)}</Tag>,
     },
     {
       title: 'Thao tác',
       key: 'actions',
+      width: 210,
       render: (_, o) => {
         const next = NEXT_ACTION[o.status]
         return (
@@ -414,7 +520,7 @@ export const MerchantOrdersPage: React.FC = () => {
           )}
 
           <Select
-            style={{ minWidth: 280 }}
+            style={{ minWidth: 220, maxWidth: '100%' }}
             value={restaurantId ?? 'ALL'}
             onChange={(value: number | 'ALL') => {
               setRestaurantId(value === 'ALL' ? undefined : value)
@@ -427,6 +533,21 @@ export const MerchantOrdersPage: React.FC = () => {
           />
         </div>
       </div>
+
+      {isError && (
+        <Alert
+          style={{ marginTop: 16 }}
+          type="error"
+          showIcon
+          message="Không thể tải danh sách đơn hàng"
+          description={errorText(error)}
+          action={
+            <Button size="small" danger icon={<ReloadOutlined />} onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
 
       <Card style={{ marginTop: 16, borderRadius: 12 }}>
         <Tabs
@@ -442,14 +563,14 @@ export const MerchantOrdersPage: React.FC = () => {
           columns={columns}
           dataSource={data?.items ?? []}
           loading={isLoading}
-          locale={{ emptyText: 'Không có đơn nào' }}
+          locale={{ emptyText: <Empty description="Không có đơn hàng nào" /> }}
           pagination={{
             current: page + 1,
             pageSize: PAGE_SIZE,
             total: data?.totalItems ?? 0,
             onChange: (p) => setPage(p - 1),
           }}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1100 }}
         />
       </Card>
 
@@ -502,8 +623,12 @@ export const MerchantOrdersPage: React.FC = () => {
       {/* Nhap ly do huy / tu choi */}
       <Modal
         open={cancelTarget !== null}
-        title={cancelTarget ? `Hủy đơn ${cancelTarget.code}` : ''}
-        okText="Xác nhận hủy"
+        title={
+          cancelTarget
+            ? `${cancelTarget.status === 'PLACED' ? 'Từ chối đơn' : 'Hủy đơn'} ${cancelTarget.code}`
+            : ''
+        }
+        okText={cancelTarget?.status === 'PLACED' ? 'Xác nhận từ chối' : 'Xác nhận hủy'}
         okButtonProps={{ danger: true, disabled: !cancelReason.trim(), loading: statusMutation.isPending }}
         cancelText="Đóng"
         onCancel={() => {
@@ -515,7 +640,11 @@ export const MerchantOrdersPage: React.FC = () => {
           statusMutation.mutate({ id: cancelTarget.id, status: 'CANCELLED', reason: cancelReason.trim() })
         }
       >
-        <Text>Lý do (khách sẽ thấy lý do này):</Text>
+        <Text>
+          {cancelTarget?.status === 'PLACED'
+            ? 'Bạn chắc chắn muốn từ chối đơn hàng này? Vui lòng nhập lý do (khách sẽ thấy lý do này):'
+            : 'Lý do hủy đơn (khách sẽ thấy lý do này):'}
+        </Text>
         <Input.TextArea
           style={{ marginTop: 8 }}
           rows={3}

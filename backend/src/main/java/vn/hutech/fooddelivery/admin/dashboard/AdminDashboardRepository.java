@@ -22,17 +22,17 @@ public class AdminDashboardRepository {
 
     /**
      * Lấy các chỉ số thống kê tổng quan:
-     * - totalOrders: Tổng số đơn hàng trên toàn hệ thống
-     * - totalRevenue: Tổng doanh thu từ các đơn hàng có trạng thái 'DELIVERED'
-     * - totalUsers: Tổng số người dùng đăng ký
+     * - totalOrders: Tổng số đơn hàng đã đặt trên toàn hệ thống (không tính đơn đang PENDING_PAYMENT)
+     * - totalRevenue: Tổng doanh thu từ các đơn hàng đã hoàn thành giao hàng (status = 'DELIVERED')
+     * - totalUsers: Tổng số người dùng đang hoạt động / chưa bị xóa (status <> 'DELETED')
      * - totalRestaurants: Tổng số nhà hàng trong hệ thống
      */
     public AdminDashboardStatsResponse getStats() {
         String sql = """
                 SELECT 
-                    (SELECT COUNT(*) FROM orders) AS total_orders,
+                    (SELECT COUNT(*) FROM orders WHERE status <> 'PENDING_PAYMENT') AS total_orders,
                     (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE status = 'DELIVERED') AS total_revenue,
-                    (SELECT COUNT(*) FROM users) AS total_users,
+                    (SELECT COUNT(*) FROM users WHERE status <> 'DELETED') AS total_users,
                     (SELECT COUNT(*) FROM restaurants) AS total_restaurants
                 """;
 

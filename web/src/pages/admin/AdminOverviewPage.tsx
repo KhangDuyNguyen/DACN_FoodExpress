@@ -1,12 +1,11 @@
 import React from 'react'
-import { Card, Col, Row, Statistic, Typography, Tag, Alert, Button, Table, Skeleton, Empty } from 'antd'
+import { Card, Col, Row, Statistic, Typography, Alert, Button, Skeleton, Empty } from 'antd'
 import {
   UserOutlined,
   ShopOutlined,
   ShoppingCartOutlined,
   DollarOutlined,
   ArrowRightOutlined,
-  ClockCircleOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -30,74 +29,19 @@ export const AdminOverviewPage: React.FC = () => {
     queryFn: fetchAdminDashboardStats,
   })
 
-  // Dữ liệu hiển thị mẫu khung giao diện
-  const sampleActivities = [
-    {
-      key: '1',
-      time: '19:40',
-      action: 'Cửa hàng "Trà Sữa KOI Thé" gửi yêu cầu duyệt chi nhánh mới',
-      type: 'MERCHANT',
-      status: 'Chờ duyệt',
-    },
-    {
-      key: '2',
-      time: '18:15',
-      action: 'Tài xế Nguyễn Văn A tải lên giấy phép lái xe',
-      type: 'DRIVER',
-      status: 'Chờ duyệt',
-    },
-    {
-      key: '3',
-      time: '16:00',
-      action: 'Voucher "WELCOME2026" đạt 50 lượt sử dụng',
-      type: 'VOUCHER',
-      status: 'Hoạt động',
-    },
-  ]
-
-  const columns = [
-    {
-      title: 'Thời gian',
-      dataIndex: 'time',
-      key: 'time',
-      width: 100,
-      render: (t: string) => <Text type="secondary">{t}</Text>,
-    },
-    {
-      title: 'Hoạt động hệ thống',
-      dataIndex: 'action',
-      key: 'action',
-      render: (text: string) => <Text strong>{text}</Text>,
-    },
-    {
-      title: 'Phân loại',
-      dataIndex: 'type',
-      key: 'type',
-      width: 120,
-      render: (type: string) => {
-        const color = type === 'MERCHANT' ? 'blue' : type === 'DRIVER' ? 'cyan' : 'gold'
-        return <Tag color={color}>{type}</Tag>
-      },
-    },
-    {
-      title: 'Trạng thái',
-      dataIndex: 'status',
-      key: 'status',
-      width: 130,
-      render: (status: string) => (
-        <Tag icon={<ClockCircleOutlined />} color="processing">
-          {status}
-        </Tag>
-      ),
-    },
-  ]
+  const isAllZero =
+    stats !== undefined &&
+    stats.totalOrders === 0 &&
+    stats.totalRevenue === 0 &&
+    stats.totalUsers === 0 &&
+    stats.totalRestaurants === 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Banner thông báo */}
       <Alert
         message="Bảng điều khiển Quản trị viên (Admin Dashboard)"
-        description="Số liệu tổng quan toàn hệ thống được cập nhật thời gian thực từ cơ sở dữ liệu."
+        description="Số liệu tổng quan toàn hệ thống được truy vấn trực tiếp từ cơ sở dữ liệu (doanh thu chỉ tính trên đơn hàng đã hoàn thành DELIVERED)."
         type="info"
         showIcon
         closable
@@ -118,22 +62,22 @@ export const AdminOverviewPage: React.FC = () => {
         />
       )}
 
-      {/* Trạng thái trống nếu không có dữ liệu */}
-      {!isLoading && !isError && !stats && (
-        <Card bordered={false} style={{ borderRadius: 10, textAlign: 'center', padding: '24px 0' }}>
-          <Empty description="Không có dữ liệu thống kê tổng quan" />
+      {/* Trạng thái trống nếu chưa có dữ liệu trong hệ thống */}
+      {!isLoading && !isError && (!stats || isAllZero) && (
+        <Card variant="borderless" style={{ borderRadius: 10, textAlign: 'center', padding: '16px 0' }}>
+          <Empty description="Hệ thống chưa có dữ liệu thống kê phát sinh" />
         </Card>
       )}
 
       {/* 4 Thẻ KPI Thống kê Tổng quan: Tổng đơn hàng, Tổng doanh thu, Tổng người dùng, Tổng nhà hàng */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
             {isLoading ? (
               <Skeleton active paragraph={{ rows: 1 }} />
             ) : (
               <Statistic
-                title={<Text style={{ color: '#64748b' }}>Tổng đơn hàng</Text>}
+                title={<Text style={{ color: '#64748b' }}>Tổng số đơn hàng</Text>}
                 value={stats?.totalOrders ?? 0}
                 prefix={<ShoppingCartOutlined style={{ color: '#fa8c16', marginRight: 8 }} />}
                 suffix={<Text type="secondary" style={{ fontSize: 13 }}>đơn</Text>}
@@ -142,13 +86,13 @@ export const AdminOverviewPage: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
             {isLoading ? (
               <Skeleton active paragraph={{ rows: 1 }} />
             ) : (
               <Statistic
                 title={<Text style={{ color: '#64748b' }}>Tổng doanh thu</Text>}
-                value={(stats?.totalRevenue ?? 0).toLocaleString('vi-VN')}
+                value={Number(stats?.totalRevenue ?? 0).toLocaleString('vi-VN')}
                 prefix={<DollarOutlined style={{ color: '#eb2f96', marginRight: 8 }} />}
                 suffix="₫"
               />
@@ -156,12 +100,12 @@ export const AdminOverviewPage: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
             {isLoading ? (
               <Skeleton active paragraph={{ rows: 1 }} />
             ) : (
               <Statistic
-                title={<Text style={{ color: '#64748b' }}>Tổng người dùng</Text>}
+                title={<Text style={{ color: '#64748b' }}>Tổng số người dùng</Text>}
                 value={stats?.totalUsers ?? 0}
                 prefix={<UserOutlined style={{ color: '#1677ff', marginRight: 8 }} />}
                 suffix={<Text type="secondary" style={{ fontSize: 13 }}>người</Text>}
@@ -170,12 +114,12 @@ export const AdminOverviewPage: React.FC = () => {
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+          <Card variant="borderless" style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
             {isLoading ? (
               <Skeleton active paragraph={{ rows: 1 }} />
             ) : (
               <Statistic
-                title={<Text style={{ color: '#64748b' }}>Tổng nhà hàng</Text>}
+                title={<Text style={{ color: '#64748b' }}>Tổng số nhà hàng</Text>}
                 value={stats?.totalRestaurants ?? 0}
                 prefix={<ShopOutlined style={{ color: '#52c41a', marginRight: 8 }} />}
                 suffix={<Text type="secondary" style={{ fontSize: 13 }}>quán</Text>}
@@ -188,7 +132,7 @@ export const AdminOverviewPage: React.FC = () => {
       {/* Phím tắt thao tác nhanh */}
       <Card
         title={<Text strong>Lối tắt quản trị nhanh</Text>}
-        bordered={false}
+        variant="borderless"
         style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
       >
         <Row gutter={[16, 16]}>
@@ -247,20 +191,6 @@ export const AdminOverviewPage: React.FC = () => {
             </Card>
           </Col>
         </Row>
-      </Card>
-
-      {/* Hoạt động gần đây */}
-      <Card
-        title={<Text strong>Yêu cầu chờ xử lý gần đây</Text>}
-        bordered={false}
-        style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
-      >
-        <Table
-          dataSource={sampleActivities}
-          columns={columns}
-          pagination={false}
-          size="middle"
-        />
       </Card>
     </div>
   )
