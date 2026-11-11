@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Col, Row, Statistic, Typography, Tag, Alert, Button, Table } from 'antd'
+import { Card, Col, Row, Statistic, Typography, Tag, Alert, Button, Table, Skeleton, Empty } from 'antd'
 import {
   UserOutlined,
   ShopOutlined,
@@ -7,15 +7,30 @@ import {
   DollarOutlined,
   ArrowRightOutlined,
   ClockCircleOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { fetchAdminDashboardStats } from '../../api/adminDashboard'
+import { getApiError } from '../../api/apiError'
 
 const { Title, Text, Paragraph } = Typography
 
 export const AdminOverviewPage: React.FC = () => {
   const navigate = useNavigate()
 
-  // Dữ liệu hiển thị mẫu khung giao diện cho Tuần 2
+  const {
+    data: stats,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['admin-dashboard-stats'],
+    queryFn: fetchAdminDashboardStats,
+  })
+
+  // Dữ liệu hiển thị mẫu khung giao diện
   const sampleActivities = [
     {
       key: '1',
@@ -79,55 +94,93 @@ export const AdminOverviewPage: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Banner thông báo tiến độ Tuần 2 */}
+      {/* Banner thông báo */}
       <Alert
-        message="Giao diện Quản trị viên (Admin) — Phiên bản nền tảng Tuần 2"
-        description="Đã hoàn thành dựng bố cục chuẩn Ant Design với Sidebar điều hướng, Header quản trị, thống kê tổng quan và các trang chức năng. Dữ liệu bên dưới là minh họa khung bố cục; API nghiệp vụ sẽ được tích hợp từ Tuần 3."
+        message="Bảng điều khiển Quản trị viên (Admin Dashboard)"
+        description="Số liệu tổng quan toàn hệ thống được cập nhật thời gian thực từ cơ sở dữ liệu."
         type="info"
         showIcon
         closable
       />
 
-      {/* 4 Thẻ KPI Thống kê Tổng quan */}
+      {/* Hiển thị lỗi nếu tải dữ liệu thất bại */}
+      {isError && (
+        <Alert
+          type="error"
+          showIcon
+          message="Không thể tải dữ liệu thống kê"
+          description={getApiError(error).message}
+          action={
+            <Button size="small" danger icon={<ReloadOutlined />} onClick={() => refetch()}>
+              Thử lại
+            </Button>
+          }
+        />
+      )}
+
+      {/* Trạng thái trống nếu không có dữ liệu */}
+      {!isLoading && !isError && !stats && (
+        <Card bordered={false} style={{ borderRadius: 10, textAlign: 'center', padding: '24px 0' }}>
+          <Empty description="Không có dữ liệu thống kê tổng quan" />
+        </Card>
+      )}
+
+      {/* 4 Thẻ KPI Thống kê Tổng quan: Tổng đơn hàng, Tổng doanh thu, Tổng người dùng, Tổng nhà hàng */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <Statistic
-              title={<Text style={{ color: '#64748b' }}>Tổng người dùng</Text>}
-              value={1280}
-              prefix={<UserOutlined style={{ color: '#1677ff', marginRight: 8 }} />}
-              suffix={<Text type="secondary" style={{ fontSize: 12 }}>(+12 hôm nay)</Text>}
-            />
+            {isLoading ? (
+              <Skeleton active paragraph={{ rows: 1 }} />
+            ) : (
+              <Statistic
+                title={<Text style={{ color: '#64748b' }}>Tổng đơn hàng</Text>}
+                value={stats?.totalOrders ?? 0}
+                prefix={<ShoppingCartOutlined style={{ color: '#fa8c16', marginRight: 8 }} />}
+                suffix={<Text type="secondary" style={{ fontSize: 13 }}>đơn</Text>}
+              />
+            )}
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <Statistic
-              title={<Text style={{ color: '#64748b' }}>Quán ăn liên kết</Text>}
-              value={86}
-              prefix={<ShopOutlined style={{ color: '#52c41a', marginRight: 8 }} />}
-              suffix={<Text type="secondary" style={{ fontSize: 12 }}>(3 chờ duyệt)</Text>}
-            />
+            {isLoading ? (
+              <Skeleton active paragraph={{ rows: 1 }} />
+            ) : (
+              <Statistic
+                title={<Text style={{ color: '#64748b' }}>Tổng doanh thu</Text>}
+                value={(stats?.totalRevenue ?? 0).toLocaleString('vi-VN')}
+                prefix={<DollarOutlined style={{ color: '#eb2f96', marginRight: 8 }} />}
+                suffix="₫"
+              />
+            )}
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <Statistic
-              title={<Text style={{ color: '#64748b' }}>Đơn hàng hôm nay</Text>}
-              value={342}
-              prefix={<ShoppingCartOutlined style={{ color: '#fa8c16', marginRight: 8 }} />}
-              suffix={<Text type="secondary" style={{ fontSize: 12 }}>(98% thành công)</Text>}
-            />
+            {isLoading ? (
+              <Skeleton active paragraph={{ rows: 1 }} />
+            ) : (
+              <Statistic
+                title={<Text style={{ color: '#64748b' }}>Tổng người dùng</Text>}
+                value={stats?.totalUsers ?? 0}
+                prefix={<UserOutlined style={{ color: '#1677ff', marginRight: 8 }} />}
+                suffix={<Text type="secondary" style={{ fontSize: 13 }}>người</Text>}
+              />
+            )}
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card bordered={false} style={{ borderRadius: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <Statistic
-              title={<Text style={{ color: '#64748b' }}>Doanh thu sàn hôm nay</Text>}
-              value={42580000}
-              prefix={<DollarOutlined style={{ color: '#eb2f96', marginRight: 8 }} />}
-              suffix="₫"
-            />
+            {isLoading ? (
+              <Skeleton active paragraph={{ rows: 1 }} />
+            ) : (
+              <Statistic
+                title={<Text style={{ color: '#64748b' }}>Tổng nhà hàng</Text>}
+                value={stats?.totalRestaurants ?? 0}
+                prefix={<ShopOutlined style={{ color: '#52c41a', marginRight: 8 }} />}
+                suffix={<Text type="secondary" style={{ fontSize: 13 }}>quán</Text>}
+              />
+            )}
           </Card>
         </Col>
       </Row>

@@ -1,7 +1,26 @@
-import React, { useState } from 'react'
-import { Button, Card, Descriptions, Input, Modal, Select, Table, Tabs, Tag, Typography, message } from 'antd'
+import React, { useEffect, useRef, useState } from 'react'
+import {
+  Button,
+  Card,
+  Descriptions,
+  Input,
+  Modal,
+  Select,
+  Table,
+  Tabs,
+  Tag,
+  Typography,
+  message,
+  notification,
+} from 'antd'
+import {
+  CheckCircleOutlined,
+  SyncOutlined,
+  CloseCircleOutlined,
+} from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
 import { getApiError } from '../../api/apiError'
 import {
   changeOrderStatus,
@@ -11,10 +30,7 @@ import {
 } from '../../api/merchantOrders'
 import { statusLabel, type OrderStatus, type OrderSummary } from '../../api/orders'
 
-// Man hinh nhan don va doi trang thai (Khang, Module D tuan 3).
-// TODO(diep): tuan 5 them WebSocket STOMP (/topic/restaurants/{id}/orders) de don moi hien ngay,
-//             hien tai tu tai lai danh sach moi 10 giay.
-
+// Man hinh nhan don va doi trang thai voi cap nhat thoi gian thuc qua WebSocket STOMP
 const { Title, Text } = Typography
 
 const PAGE_SIZE = 20
@@ -54,6 +70,29 @@ function errorText(error: unknown) {
   return Object.values(apiError.fieldErrors)[0] ?? apiError.message
 }
 
+function getWsUrl(): string {
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL
+  }
+  if (
+    import.meta.env.VITE_API_URL &&
+    typeof import.meta.env.VITE_API_URL === 'string' &&
+    import.meta.env.VITE_API_URL.startsWith('http')
+  ) {
+    try {
+      const apiUrl = new URL(import.meta.env.VITE_API_URL)
+      const wsProto = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${wsProto}//${apiUrl.host}/ws`
+    } catch {
+      // Fallback
+    }
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/ws`
+}
+
+type ConnectionStatus = 'Online' | 'Connecting' | 'Offline'
+
 export const MerchantOrdersPage: React.FC = () => {
   const queryClient = useQueryClient()
   const [restaurantId, setRestaurantId] = useState<number | undefined>()
@@ -62,15 +101,35 @@ export const MerchantOrdersPage: React.FC = () => {
   const [detailId, setDetailId] = useState<number | null>(null)
   const [cancelTarget, setCancelTarget] = useState<OrderSummary | null>(null)
   const [cancelReason, setCancelReason] = useState('')
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('Connecting')
 
+  const clientRef = useRef<Client | null>(null)
+  const subscriptionsRef = useRef<StompSubscription[]>([])
+  const processedOrderIdsRef = useRef<Set<string | number>>(new Set())
+
+  const restaurantIdRef = useRef<number | undefined>(restaurantId)
+  const queryClientRef = useRef(queryClient)
   const { data: restaurants = [] } = useQuery({ queryKey: ['merchant-restaurants'], queryFn: fetchMyRestaurants })
+  const restaurantsRef = useRef(restaurants)
+
+  useEffect(() => {
+    restaurantIdRef.current = restaurantId
+  }, [restaurantId])
+
+  useEffect(() => {
+    queryClientRef.current = queryClient
+  }, [queryClient])
+
+  useEffect(() => {
+    restaurantsRef.current = restaurants
+  }, [restaurants])
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['merchant-orders', restaurantId, tab, page],
     queryFn: () =>
       fetchMerchantOrders({ restaurantId, status: tab === 'ALL' ? undefined : tab, page, size: PAGE_SIZE }),
     placeholderData: keepPreviousData,
-    refetchInterval: 10_000,
+    refetchInterval: connectionStatus === 'Online' ? false : 15_000,
   })
 
   const { data: detail, isLoading: loadingDetail } = useQuery({
@@ -91,6 +150,159 @@ export const MerchantOrdersPage: React.FC = () => {
     },
     onError: (error) => message.error(errorText(error)),
   })
+
+  // Xu ly su kien don hang moi tu WebSocket STOMP
+  const handleIncomingOrder = (msg: IMessage) => {
+    try {
+      let orderData: any
+      try {
+        orderData = JSON.parse(msg.body)
+      } catch {
+        orderData = { code: msg.body }
+      }
+
+      // Tranh trung lap bang bo nho tam processedOrderIds
+      const orderKey = orderData?.orderId ?? orderData?.id ?? orderData?.code
+      if (orderKey) {
+        if (processedOrderIdsRef.current.has(orderKey)) {
+          return
+        }
+        processedOrderIdsRef.current.add(orderKey)
+        if (processedOrderIdsRef.current.size > 200) {
+          const oldest = processedOrderIdsRef.current.values().next().value
+          if (oldest !== undefined) processedOrderIdsRef.current.delete(oldest)
+        }
+      }
+
+      const orderCode = orderData?.code ? `Đơn hàng ${orderData.code}` : orderKey ? `Đơn hàng #${orderKey}` : 'Đơn hàng mới'
+      const restaurantName = orderData?.restaurantName ? ` tại ${orderData.restaurantName}` : ''
+      const amountStr = orderData?.totalAmount ? ` (${vnd(Number(orderData.totalAmount))})` : ''
+
+      notification.info({
+        message: '🔔 Có đơn hàng mới!',
+        description: `${orderCode}${restaurantName}${amountStr} vừa được đặt thành công. Danh sách đơn đã được cập nhật.`,
+        placement: 'topRight',
+        duration: 6,
+        btn: (
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              setTab('PLACED')
+              setPage(0)
+              queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
+              notification.destroy()
+            }}
+          >
+            Xem ngay
+          </Button>
+        ),
+      })
+
+      // Invalidate queries de cap nhat bang ngay lap tuc ma khong can reload trang
+      queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
+    } catch (err) {
+      console.error('Lỗi xử lý sự kiện đơn hàng WebSocket:', err)
+    }
+  }
+
+  // Dang ky subscription theo chi nhanh dang chon hoac tat ca chi nhanh so huu
+  const updateSubscriptions = () => {
+    // Huy cac subscription cu
+    subscriptionsRef.current.forEach((sub) => {
+      try {
+        sub.unsubscribe()
+      } catch (e) {
+        console.warn('Lỗi khi hủy subscription STOMP:', e)
+      }
+    })
+    subscriptionsRef.current = []
+
+    const client = clientRef.current
+    if (!client || !client.connected) {
+      return
+    }
+
+    const currentRestaurantId = restaurantIdRef.current
+    const currentRestaurants = restaurantsRef.current
+
+    const targetIds: number[] = []
+    if (currentRestaurantId !== undefined) {
+      targetIds.push(currentRestaurantId)
+    } else if (currentRestaurants && currentRestaurants.length > 0) {
+      currentRestaurants.forEach((r) => targetIds.push(r.id))
+    }
+
+    targetIds.forEach((id) => {
+      const topic = `/topic/restaurants/${id}/orders`
+      try {
+        const sub = client.subscribe(topic, (msg: IMessage) => {
+          handleIncomingOrder(msg)
+        })
+        subscriptionsRef.current.push(sub)
+      } catch (err) {
+        console.error(`Không thể subscribe topic ${topic}:`, err)
+      }
+    })
+  }
+
+  // Khoi tao WebSocket STOMP Client
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    const client = new Client({
+      brokerURL: getWsUrl(),
+      connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
+      reconnectDelay: 5000,
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
+      beforeConnect: () => {
+        setConnectionStatus('Connecting')
+        const currentToken = localStorage.getItem('token')
+        if (currentToken) {
+          client.connectHeaders = { Authorization: `Bearer ${currentToken}` }
+        }
+      },
+      onConnect: () => {
+        setConnectionStatus('Online')
+        // Dong bo du lieu khi ket noi / ket noi lai
+        queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
+        updateSubscriptions()
+      },
+      onDisconnect: () => {
+        setConnectionStatus('Offline')
+      },
+      onWebSocketClose: () => {
+        setConnectionStatus('Offline')
+      },
+      onStompError: (frame) => {
+        console.warn('Lỗi STOMP:', frame)
+        setConnectionStatus('Offline')
+      },
+    })
+
+    clientRef.current = client
+    client.activate()
+
+    return () => {
+      subscriptionsRef.current.forEach((sub) => {
+        try {
+          sub.unsubscribe()
+        } catch {
+          // ignore
+        }
+      })
+      subscriptionsRef.current = []
+      client.deactivate()
+      clientRef.current = null
+    }
+  }, [])
+
+  // Khi danh sach quan hoac quan duoc chon thay doi, cap nhat lai subscription
+  useEffect(() => {
+    if (clientRef.current && clientRef.current.connected) {
+      updateSubscriptions()
+    }
+  }, [restaurantId, restaurants])
 
   const columns: ColumnsType<OrderSummary> = [
     {
@@ -167,20 +379,53 @@ export const MerchantOrdersPage: React.FC = () => {
           <Title level={3} style={{ margin: 0 }}>
             Đơn hàng
           </Title>
-          <Text type="secondary">Danh sách tự cập nhật mỗi 10 giây{isFetching ? ' · đang tải...' : ''}</Text>
+          <Text type="secondary">
+            Cập nhật thời gian thực qua WebSocket · Trạng thái:{' '}
+            <strong
+              style={{
+                color:
+                  connectionStatus === 'Online'
+                    ? '#52c41a'
+                    : connectionStatus === 'Connecting'
+                      ? '#1677ff'
+                      : '#ff4d4f',
+              }}
+            >
+              {connectionStatus}
+            </strong>
+            {isFetching ? ' · đang đồng bộ...' : ''}
+          </Text>
         </div>
-        <Select
-          style={{ minWidth: 280 }}
-          value={restaurantId ?? 'ALL'}
-          onChange={(value: number | 'ALL') => {
-            setRestaurantId(value === 'ALL' ? undefined : value)
-            setPage(0)
-          }}
-          options={[
-            { value: 'ALL', label: 'Tất cả chi nhánh' },
-            ...restaurants.map((r) => ({ value: r.id, label: r.name })),
-          ]}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {connectionStatus === 'Online' && (
+            <Tag color="success" icon={<CheckCircleOutlined />}>
+              Online
+            </Tag>
+          )}
+          {connectionStatus === 'Connecting' && (
+            <Tag color="processing" icon={<SyncOutlined spin />}>
+              Connecting
+            </Tag>
+          )}
+          {connectionStatus === 'Offline' && (
+            <Tag color="error" icon={<CloseCircleOutlined />}>
+              Offline
+            </Tag>
+          )}
+
+          <Select
+            style={{ minWidth: 280 }}
+            value={restaurantId ?? 'ALL'}
+            onChange={(value: number | 'ALL') => {
+              setRestaurantId(value === 'ALL' ? undefined : value)
+              setPage(0)
+            }}
+            options={[
+              { value: 'ALL', label: 'Tất cả chi nhánh' },
+              ...restaurants.map((r) => ({ value: r.id, label: r.name })),
+            ]}
+          />
+        </div>
       </div>
 
       <Card style={{ marginTop: 16, borderRadius: 12 }}>
