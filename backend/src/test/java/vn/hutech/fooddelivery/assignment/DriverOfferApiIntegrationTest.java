@@ -29,6 +29,7 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import vn.hutech.fooddelivery.security.JwtService;
+import vn.hutech.fooddelivery.order.OrderRepository;
 
 import javax.sql.DataSource;
 import java.sql.Timestamp;
@@ -100,8 +101,8 @@ class DriverOfferApiIntegrationTest {
 
         @Bean @Primary
         DriverOfferDecisionService testDriverOfferDecisionService(DriverOfferRepository offers,
-                                                                  AssignmentOfferRepository assignments, TestClock clock) {
-            return new DriverOfferDecisionService(offers, assignments, clock);
+                AssignmentOfferRepository assignments, OrderRepository orders, TestClock clock) {
+            return new DriverOfferDecisionService(offers, assignments, orders, clock);
         }
 
         @Bean @Primary
@@ -250,7 +251,9 @@ class DriverOfferApiIntegrationTest {
         assertEquals(200, first.getStatusCode().value());
         assertEquals("ACCEPTED", first.getBody().path("status").asText());
         assertEquals(7L, ((Number) orderRow(301).get("driver_id")).longValue());
-        assertEquals(before.get("status"), orderRow(301).get("status"));
+        assertEquals("PLACED", before.get("status"));
+        assertEquals("PREPARING", orderRow(301).get("status"));
+        assertEquals(1, count("SELECT COUNT(*) FROM order_status_history WHERE order_id = 301 AND status = 'PREPARING' AND changed_by = 42"));
         assertEquals("ACCEPTED", offerStatus(401));
         var accepted = offerRow(401);
         var assigned = orderRow(301);
@@ -261,6 +264,7 @@ class DriverOfferApiIntegrationTest {
         assertEquals(first.getBody(), replay.getBody());
         assertEquals(accepted, offerRow(401));
         assertEquals(assigned, orderRow(301));
+        assertEquals(1, count("SELECT COUNT(*) FROM order_status_history WHERE order_id = 301 AND status = 'PREPARING'"));
         assertEquals(1, count("SELECT COUNT(*) FROM order_assignments"));
     }
 

@@ -23,7 +23,7 @@ public class AssignmentRecoveryRepository {
                 SELECT oa.id FROM order_assignments oa JOIN orders o ON o.id = oa.order_id
                 WHERE oa.id > :afterId AND oa.status = 'OFFERED'
                   AND (oa.expires_at IS NULL OR oa.expires_at <= :now
-                       OR o.status <> 'PLACED' OR o.driver_id IS NOT NULL)
+                       OR o.status NOT IN ('PLACED', 'PREPARING', 'READY_FOR_PICKUP') OR o.driver_id IS NOT NULL)
                 ORDER BY oa.id LIMIT :limit
                 """, scanParameters(afterId, limit, now), (rs, i) -> rs.getLong("id"));
     }
@@ -31,7 +31,7 @@ public class AssignmentRecoveryRepository {
     List<Long> findWaitingOrderIds(long afterId, int limit, LocalDateTime now) {
         return jdbc.query("""
                 SELECT o.id FROM orders o
-                WHERE o.id > :afterId AND o.status = 'PLACED' AND o.driver_id IS NULL
+                WHERE o.id > :afterId AND o.status IN ('PLACED', 'PREPARING', 'READY_FOR_PICKUP') AND o.driver_id IS NULL
                   AND NOT EXISTS (
                       SELECT 1 FROM order_assignments oa WHERE oa.order_id = o.id AND oa.status = 'OFFERED'
                         AND oa.offered_at <= :now AND oa.expires_at > :now
@@ -50,7 +50,8 @@ public class AssignmentRecoveryRepository {
     boolean isWaitingWithoutOffer(long orderId) {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS (
-                    SELECT 1 FROM orders o WHERE o.id = :id AND o.status = 'PLACED' AND o.driver_id IS NULL
+                    SELECT 1 FROM orders o WHERE o.id = :id
+                      AND o.status IN ('PLACED', 'PREPARING', 'READY_FOR_PICKUP') AND o.driver_id IS NULL
                       AND NOT EXISTS (SELECT 1 FROM order_assignments oa
                                       WHERE oa.order_id = o.id AND oa.status = 'OFFERED')
                 )

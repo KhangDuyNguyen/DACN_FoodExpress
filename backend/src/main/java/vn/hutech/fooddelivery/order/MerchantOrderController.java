@@ -51,7 +51,10 @@ public class MerchantOrderController {
     }
 
     @PatchMapping("/{id}/status")
-    @Operation(summary = "Đổi trạng thái đơn theo đúng thứ tự: nhận đơn, bắt đầu giao, hoàn thành, hoặc hủy (kèm lý do)")
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]:
+    // Mo ta chuan bi/san sang khong phu thuoc tai xe; huy van bi chan sau ACCEPTED.
+    @Operation(summary = "Chuẩn bị món, báo sẵn sàng lấy món hoặc hủy khi tài xế chưa ACCEPTED",
+            description = "PLACED → PREPARING → READY_FOR_PICKUP kể cả chưa có tài xế. Xác nhận lại PREPARING tại PREPARING không ghi trùng lịch sử. Merchant không được chuyển DELIVERING/DELIVERED.")
     public ResponseEntity<OrderDetailResponse> changeStatus(@AuthenticationPrincipal AuthUser user,
                                                             @PathVariable long id,
                                                             @Valid @RequestBody ChangeOrderStatusRequest req) {

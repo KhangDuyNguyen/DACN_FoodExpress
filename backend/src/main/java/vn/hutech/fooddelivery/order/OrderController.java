@@ -31,8 +31,8 @@ import vn.hutech.fooddelivery.security.AuthUser;
 @Tag(name = "Orders", description = "Đặt hàng và đơn của khách (chỉ CUSTOMER)")
 public class OrderController {
 
-    /** Cac trang thai dung trong tuan 3, dung de kiem tra tham so ?status= */
-    static final String STATUS_PATTERN = "PLACED|PREPARING|DELIVERING|DELIVERED|CANCELLED";
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Cho khach/merchant loc cac trang thai giao moi, giu nguyen phan trang.
+    static final String STATUS_PATTERN = "PLACED|PREPARING|READY_FOR_PICKUP|PICKED_UP|DELIVERING|DELIVERED|CANCELLED";
 
     private final OrderService orderService;
     private final OrderManagementService orderManagementService;
@@ -74,7 +74,8 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/cancel")
-    @Operation(summary = "Khách hủy đơn (chỉ khi quán chưa nhận đơn), bắt buộc ghi lý do")
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Mo ta them dieu kien tai xe chua ACCEPTED.
+    @Operation(summary = "Khách hủy đơn PLACED khi tài xế chưa nhận giao, bắt buộc ghi lý do")
     public ResponseEntity<OrderDetailResponse> cancel(@AuthenticationPrincipal AuthUser user,
                                                       @PathVariable long id,
                                                       @Valid @RequestBody CancelOrderRequest req) {

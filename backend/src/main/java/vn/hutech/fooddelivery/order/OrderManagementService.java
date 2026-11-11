@@ -46,8 +46,9 @@ public class OrderManagementService {
 
     @Transactional
     public OrderDetailResponse cancelByCustomer(long customerId, long orderId, String reason) {
-        OrderRow order = findOrder(orderId);
-        checkCustomerOwns(order, customerId);
+        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Order lock phai co truoc khi kiem tra huy/assignment, tranh race Accept.
+        var order = findOrderForUpdate(orderId);
+        checkCustomerOwns(order.customerId(), customerId);
         changeStatus(order, Actor.CUSTOMER, "CANCELLED", customerId, reason.trim());
         return orderService.getDetail(orderId);
     }
@@ -76,8 +77,14 @@ public class OrderManagementService {
 
     @Transactional
     public OrderDetailResponse changeStatusByMerchant(long ownerUserId, long orderId, ChangeOrderStatusRequest req) {
-        OrderRow order = findOrder(orderId);
-        checkMerchantOwns(order, ownerUserId);
+        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Cung khoa Order voi Driver Delivery va Assignment Accept.
+        var order = findOrderForUpdate(orderId);
+        checkMerchantOwns(order.restaurantId(), ownerUserId);
+        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]:
+        // Accept da chuyen PREPARING thi merchant xac nhan lai la no-op, khong ghi trung history.
+        if ("PREPARING".equals(order.status()) && "PREPARING".equals(req.status())) {
+            return orderService.getDetail(orderId);
+        }
         // Chi luu ly do khi huy don
         String reason = "CANCELLED".equals(req.status()) ? req.reason().trim() : null;
         changeStatus(order, Actor.MERCHANT, req.status(), ownerUserId, reason);
@@ -92,10 +99,15 @@ public class OrderManagementService {
      *   2. UPDATE ... WHERE status = trang thai vua doc; 0 dong nghia la co nguoi vua doi truoc -> 409.
      *   3. Ghi them 1 dong lich su (ai doi, luc nao, ly do).
      */
-    private void changeStatus(OrderRow order, Actor actor, String toStatus, long changedBy, String reason) {
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Snapshot khoa thay cho doc thuong khi ghi trang thai.
+    private void changeStatus(OrderRepository.LockedOrder order, Actor actor, String toStatus, long changedBy, String reason) {
         if (!OrderStatusFlow.canChange(actor, order.status(), toStatus)) {
             throw new ConflictException("Không thể chuyển đơn từ \"" + OrderStatusFlow.label(order.status())
                     + "\" sang \"" + OrderStatusFlow.label(toStatus) + "\"");
+        }
+        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Chan ca khach/merchant huy sau ACCEPTED; chua co nghiep vu huy/tai gan.
+        if ("CANCELLED".equals(toStatus) && orderRepository.hasAcceptedAssignmentForUpdate(order.id())) {
+            throw new ConflictException("Tài xế đã nhận giao đơn, chưa thể hủy đơn hàng");
         }
         int updated = orderRepository.updateStatus(order.id(), order.status(), toStatus, reason);
         if (updated == 0) {
@@ -109,14 +121,30 @@ public class OrderManagementService {
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn hàng"));
     }
 
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Khong doi transaction, giu khoa den khi status/history cung commit.
+    private OrderRepository.LockedOrder findOrderForUpdate(long orderId) {
+        return orderRepository.lockOrder(orderId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn hàng"));
+    }
+
     private static void checkCustomerOwns(OrderRow order, long customerId) {
-        if (order.customerId() != customerId) {
+        checkCustomerOwns(order.customerId(), customerId);
+    }
+
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Dung chung kiem tra so huu cho snapshot doc va snapshot khoa.
+    private static void checkCustomerOwns(long orderCustomerId, long customerId) {
+        if (orderCustomerId != customerId) {
             throw new ForbiddenException("Bạn không có quyền xem đơn hàng này");
         }
     }
 
     private void checkMerchantOwns(OrderRow order, long ownerUserId) {
-        if (!orderRepository.isRestaurantOwnedBy(order.restaurantId(), ownerUserId)) {
+        checkMerchantOwns(order.restaurantId(), ownerUserId);
+    }
+
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Giu quyen so huu quan cu cho ca luong ghi co khoa.
+    private void checkMerchantOwns(long restaurantId, long ownerUserId) {
+        if (!orderRepository.isRestaurantOwnedBy(restaurantId, ownerUserId)) {
             throw new ForbiddenException("Đơn này không thuộc quán của bạn");
         }
     }

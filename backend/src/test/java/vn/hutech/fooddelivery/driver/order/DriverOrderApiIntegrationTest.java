@@ -266,7 +266,7 @@ class DriverOrderApiIntegrationTest {
     }
 
     @Test
-    void realAcceptThenFreshJwtRequestRecoversPlacedOrderFromDatabase() {
+    void realAcceptThenFreshJwtRequestRecoversPreparingOrderFromDatabase() {
         order(301, null, "PLACED");
         var at = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         jdbc.update("UPDATE drivers SET last_location_at = :at WHERE id = 7", Map.of("at", Timestamp.valueOf(at)));
@@ -278,7 +278,7 @@ class DriverOrderApiIntegrationTest {
                 new HttpEntity<>(headers(42)), JsonNode.class);
         assertEquals(200, accepted.getStatusCode().value());
         assertEquals("ACCEPTED", accepted.getBody().path("status").asText());
-        assertEquals("PLACED", current(get(42)).path("status").asText());
+        assertEquals("PREPARING", current(get(42)).path("status").asText());
         assertEquals(301, current(get(42)).path("orderId").asLong());
         var offers = rest.exchange("/api/driver/offers", HttpMethod.GET, new HttpEntity<>(headers(42)), JsonNode.class);
         assertTrue(offers.getBody().path("offers").isEmpty());

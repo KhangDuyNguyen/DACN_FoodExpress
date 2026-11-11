@@ -56,7 +56,7 @@ public class DriverOfferController {
 
     @PostMapping("/{id}/accept")
     @Operation(summary = "Nhận lời mời của tài xế hiện tại",
-            description = "Không cần request body. Backend kiểm tra hạn; nhận lặp thành công khi Order vẫn PLACED và gắn đúng tài xế.")
+            description = "Nhận đơn PLACED/PREPARING/READY_FOR_PICKUP chưa có tài xế. PLACED chuyển PREPARING; không chuyển lùi. Nhận lặp giữ kết quả khi đơn còn ở giai đoạn này và gắn đúng tài xế.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Đã nhận lời mời",
                     content = @Content(schema = @Schema(implementation = DriverOfferActionResponse.class))),

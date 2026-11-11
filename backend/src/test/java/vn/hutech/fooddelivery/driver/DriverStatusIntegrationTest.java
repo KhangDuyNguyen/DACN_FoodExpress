@@ -476,7 +476,7 @@ class DriverStatusIntegrationTest {
 
     private void assertAssigned(OfferFixture f) {
         assertEquals(f.driver().driverId(), jdbc.queryForObject("SELECT driver_id FROM orders WHERE id=:id", Map.of("id", f.orderId()), Long.class));
-        assertEquals("PLACED", jdbc.queryForObject("SELECT status FROM orders WHERE id=:id", Map.of("id", f.orderId()), String.class));
+        assertEquals("PREPARING", jdbc.queryForObject("SELECT status FROM orders WHERE id=:id", Map.of("id", f.orderId()), String.class));
         assertEquals("ACCEPTED", offerStatus(f));
     }
 
