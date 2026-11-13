@@ -20,12 +20,63 @@ sealed interface CurrentOrderResult {
     data object SessionExpired : CurrentOrderResult
     data class Failed(val message: String) : CurrentOrderResult
 }
-fun interface DriverCurrentOrderSource { suspend fun load(): CurrentOrderResult }
+data class DriverDeliveryStatus(val orderId: Long, val status: String,
+    val updatedAt: LocalDateTime, val deliveredAt: LocalDateTime?)
+
+sealed interface DriverDeliveryResult {
+    data class Updated(val value: DriverDeliveryStatus) : DriverDeliveryResult
+    data object SessionExpired : DriverDeliveryResult
+    data object Forbidden : DriverDeliveryResult
+    data class Rejected(val message: String) : DriverDeliveryResult
+    data class Uncertain(val message: String) : DriverDeliveryResult
+}
+
+fun interface DriverCurrentOrderSource {
+    suspend fun load(): CurrentOrderResult
+    // Read-only adapters remain usable; the production Repository implements the command explicitly.
+    suspend fun changeStatus(orderId: Long, target: String): DriverDeliveryResult =
+        DriverDeliveryResult.Rejected("Chức năng cập nhật chưa sẵn sàng. Vui lòng thử lại.")
+}
 
 class DriverOrderRepository @Inject constructor(
     private val api: DriverOrderApi,
     private val auth: DriverAuthRepository,
 ) : DriverCurrentOrderSource {
+    override suspend fun changeStatus(orderId: Long, target: String): DriverDeliveryResult {
+        if (orderId <= 0 || target !in setOf("PICKED_UP", "DELIVERING", "DELIVERED")) {
+            return DriverDeliveryResult.Rejected("Thao tác giao hàng không hợp lệ. Vui lòng cập nhật lại đơn.")
+        }
+        // Capture once: a delayed command must never acquire the next account's token.
+        val token = auth.currentAccessToken() ?: return DriverDeliveryResult.SessionExpired
+        return withTimeoutOrNull(12_000) {
+            try {
+                val response = api.changeStatus("Bearer $token", orderId, DriverDeliveryRequest(target))
+                if (response.code() != 200) {
+                    response.errorBody()?.close()
+                    return@withTimeoutOrNull when (response.code()) {
+                        401 -> DriverDeliveryResult.SessionExpired
+                        403 -> DriverDeliveryResult.Forbidden
+                        400 -> DriverDeliveryResult.Rejected("Yêu cầu chưa hợp lệ. Vui lòng kiểm tra lại trạng thái đơn hàng.")
+                        404 -> DriverDeliveryResult.Rejected("Không tìm thấy đơn có thể thao tác. Vui lòng kiểm tra lại.")
+                        409 -> DriverDeliveryResult.Rejected("Đơn hàng đã thay đổi. Hãy kiểm tra trạng thái mới nhất trước khi tiếp tục.")
+                        else -> DriverDeliveryResult.Uncertain("Chưa xác định được kết quả cập nhật. Vui lòng kiểm tra lại.")
+                    }
+                }
+                val body = requireNotNull(response.body())
+                require(body.orderId == orderId && body.status == target)
+                val updatedAt = LocalDateTime.parse(requireNotNull(body.updatedAt))
+                require(body.deliveredAt != MISSING_NULLABLE_FIELD)
+                val deliveredAt = body.deliveredAt?.let(LocalDateTime::parse)
+                require((target == "DELIVERED") == (deliveredAt != null))
+                DriverDeliveryResult.Updated(DriverDeliveryStatus(orderId, target, updatedAt, deliveredAt))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                DriverDeliveryResult.Uncertain("Chưa xác định được kết quả: kết nối gián đoạn hoặc phản hồi chưa hợp lệ. Vui lòng kiểm tra lại.")
+            }
+        } ?: DriverDeliveryResult.Uncertain("Chưa nhận được kết quả trong thời gian chờ. Đơn có thể đã được cập nhật; hãy kiểm tra lại.")
+    }
+
     override suspend fun load(): CurrentOrderResult {
         val token = auth.currentAccessToken() ?: return CurrentOrderResult.SessionExpired
         return withTimeoutOrNull(12_000) {

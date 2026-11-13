@@ -1,6 +1,7 @@
 package vn.hutech.foodexpress.driver.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import vn.hutech.foodexpress.driver.ui.auth.DriverAuthPhase
+import vn.hutech.foodexpress.driver.ui.auth.DriverAuthUiState
 import vn.hutech.foodexpress.driver.ui.auth.DriverAuthViewModel
 import vn.hutech.foodexpress.driver.ui.auth.DriverLoginScreen
 import vn.hutech.foodexpress.driver.ui.auth.DriverRegisterIntroScreen
@@ -31,16 +33,23 @@ import vn.hutech.foodexpress.driver.ui.auth.DriverSessionScreen
 import vn.hutech.foodexpress.driver.ui.profile.DriverProfileScreen
 import vn.hutech.foodexpress.driver.ui.profile.DriverProfileViewModel
 import vn.hutech.foodexpress.driver.ui.dashboard.DriverDashboardViewModel
+import vn.hutech.foodexpress.driver.ui.dashboard.DriverDashboardUiState
 import vn.hutech.foodexpress.driver.ui.dashboard.DriverOrderKnowledge
 import vn.hutech.foodexpress.driver.ui.offer.DriverOffersViewModel
+import vn.hutech.foodexpress.driver.ui.offer.DriverOffersUiState
 import vn.hutech.foodexpress.driver.ui.offer.DriverOfferDialog
 import vn.hutech.foodexpress.driver.ui.offer.DriverOfferStatusCard
+import vn.hutech.foodexpress.driver.ui.offer.DriverRejectedOfferNotice
+import vn.hutech.foodexpress.driver.ui.offer.DriverOfferPhase
 import vn.hutech.foodexpress.driver.ui.order.DriverCurrentOrderViewModel
 import vn.hutech.foodexpress.driver.ui.order.DriverCurrentOrderCard
+import vn.hutech.foodexpress.driver.ui.order.DriverDeliveryRecoveryAction
 import vn.hutech.foodexpress.driver.ui.order.DriverCurrentOrderUiState
 import vn.hutech.foodexpress.driver.ui.order.DriverOrderDetailScreen
 import vn.hutech.foodexpress.driver.ui.order.GoogleMapsDirections
 import vn.hutech.foodexpress.driver.ui.order.forDriver
+import vn.hutech.foodexpress.driver.ui.report.*
+import vn.hutech.foodexpress.driver.ui.dashboard.DriverDashboardNavigation
 import vn.hutech.foodexpress.driver.data.offer.OfferAction
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverOnboardingScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverPermissionIntroScreen
@@ -58,11 +67,30 @@ private const val LOGIN_ROUTE = "login"
 private const val SESSION_ROUTE = "driver-session"
 private const val PROFILE_ROUTE = "driver-profile"
 private const val ORDER_DETAIL_ROUTE = "driver-order-detail"
+private const val EARNINGS_ROUTE = "driver-earnings"
+private const val EARNING_DETAIL_ROUTE = "driver-earning-detail"
+private const val ORDERS_ROUTE = "driver-orders"
+private const val HISTORY_DETAIL_ROUTE = "driver-history-detail"
+private val REPORT_ROUTES = setOf(EARNINGS_ROUTE, EARNING_DETAIL_ROUTE, ORDERS_ROUTE, HISTORY_DETAIL_ROUTE)
 private const val REGISTER_INTRO_ROUTE = "register-intro"
 private const val REGISTER_ACCOUNT_ROUTE = "register-account"
 private const val REGISTER_VEHICLE_ROUTE = "register-vehicle"
 private const val REGISTER_SUCCESS_ROUTE = "register-success"
 private val REGISTER_ROUTES = setOf(REGISTER_INTRO_ROUTE, REGISTER_ACCOUNT_ROUTE, REGISTER_VEHICLE_ROUTE, REGISTER_SUCCESS_ROUTE)
+
+// Presentation only. Never infer OFF from a switch snapshot or an unverified/error response.
+internal fun confirmedOfflineForCurrentOrder(
+    session: DriverAuthUiState,
+    dashboard: DriverDashboardUiState,
+    current: DriverCurrentOrderUiState,
+    offers: DriverOffersUiState,
+): Boolean = session.phase == DriverAuthPhase.AUTHENTICATED && !session.loading &&
+    session.user?.id?.let { it > 0 && current.ownerId == it } == true &&
+    current.verified && !current.loading && !current.sessionExpired && current.error == null && current.order == null &&
+    dashboard.profile?.isOnline == false && dashboard.orderKnowledge == DriverOrderKnowledge.IDLE &&
+    !dashboard.loading && !dashboard.saving && !dashboard.enablingOnline && !dashboard.statusUnknown &&
+    !dashboard.sessionExpired && !dashboard.messageIsError && !dashboard.offlineConflict && !dashboard.acceptPending &&
+    offers.pending == null && offers.acceptedOrderId == null && !offers.sending && !offers.sessionExpired
 
 @Composable
 fun DriverAppNavigation() {
@@ -81,9 +109,15 @@ fun DriverAppNavigation() {
     val offerState by offers.state.collectAsStateWithLifecycle()
     val orders: DriverCurrentOrderViewModel = viewModel()
     val orderState by orders.state.collectAsStateWithLifecycle()
+    val reports: DriverReportsViewModel = viewModel()
+    val reportState by reports.state.collectAsStateWithLifecycle()
+    val reportOfferContent: (@Composable () -> Unit)? = if (state.phase == DriverAuthPhase.AUTHENTICATED &&
+        offerState.acceptedOrderId == null && offerState.offer == null && offerState.message != null && offerState.phase != DriverOfferPhase.REJECTED)
+        { { DriverOfferStatusCard(offerState, offers::retryPending, offers::refresh) } } else null
     var foreground by androidx.compose.runtime.remember { mutableStateOf(false) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+    var rejectOrigin by androidx.compose.runtime.remember(state.user?.id) { mutableStateOf<String?>(null) }
     var profileSessionNotice by rememberSaveable { mutableStateOf<String?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
     // Read live VM values at lifecycle/logout boundaries, not the last rendered frame.
@@ -104,7 +138,7 @@ fun DriverAppNavigation() {
     val logout: () -> Unit = {
         syncDeliveryKnowledge()
         dashboard.clear() // Capture the old owner's policy/JWT before clearing other state.
-        orders.clear(); offers.clear(); auth.logout()
+        reports.clear(); orders.clear(); offers.clear(); auth.logout()
     }
 
     DisposableEffect(orders, offers) {
@@ -116,12 +150,15 @@ fun DriverAppNavigation() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) { foreground = true; orders.setForeground(true); syncDeliveryKnowledge(); dashboard.setForeground(true); offers.setForeground(true) }
             if (event == Lifecycle.Event.ON_STOP) { syncDeliveryKnowledge(); foreground = false; orders.setForeground(false); dashboard.setForeground(false); offers.setForeground(false) }
+            if (event == Lifecycle.Event.ON_START) reports.setForeground(true)
+            if (event == Lifecycle.Event.ON_STOP) reports.setForeground(false)
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         dashboard.setForeground(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
         foreground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
         offers.setForeground(foreground)
         orders.setForeground(foreground)
+        reports.setForeground(foreground)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             syncDeliveryKnowledge()
@@ -129,6 +166,7 @@ fun DriverAppNavigation() {
             foreground = false
             offers.setForeground(false)
             orders.setForeground(false)
+            reports.setForeground(false)
         }
     }
 
@@ -136,9 +174,9 @@ fun DriverAppNavigation() {
 
     LaunchedEffect(state.phase, state.user?.id) {
         when (state.phase) {
-            DriverAuthPhase.AUTHENTICATED -> state.user?.id?.let { offers.activateSession(it); orders.activateSession(it); dashboard.activateSession(it); syncDeliveryKnowledge() }
-            DriverAuthPhase.SIGNED_OUT -> { dashboard.clear(); orders.clear(); offers.clear() }
-            else -> { dashboard.pauseSessionVerification(); orders.pauseSessionVerification(); offers.pauseSessionVerification() }
+            DriverAuthPhase.AUTHENTICATED -> state.user?.id?.let { offers.activateSession(it); orders.activateSession(it); dashboard.activateSession(it); reports.activateSession(it); syncDeliveryKnowledge() }
+            DriverAuthPhase.SIGNED_OUT -> { dashboard.clear(); orders.clear(); offers.clear(); reports.clear() }
+            else -> { dashboard.pauseSessionVerification(); orders.pauseSessionVerification(); offers.pauseSessionVerification(); reports.pauseSessionVerification() }
         }
     }
 
@@ -159,6 +197,13 @@ fun DriverAppNavigation() {
     }
     LaunchedEffect(offerState.sessionExpired, orderState.sessionExpired) {
         if (offerState.sessionExpired || orderState.sessionExpired) auth.checkSession()
+    }
+    LaunchedEffect(reportState.sessionExpired) { if (reportState.sessionExpired) auth.checkSession() }
+    LaunchedEffect(currentRoute) {
+        reports.show(when (currentRoute) { EARNINGS_ROUTE -> DriverReportsPage.EARNINGS; ORDERS_ROUTE -> DriverReportsPage.ORDERS; else -> DriverReportsPage.NONE })
+    }
+    LaunchedEffect(orderState.completion?.orderId) {
+        if (orderState.completion != null) reports.invalidateAfterDelivery()
     }
 
     LaunchedEffect(currentRoute, state.phase) {
@@ -200,7 +245,7 @@ fun DriverAppNavigation() {
     LaunchedEffect(state.phase, currentRoute) {
         val destination = when {
             currentRoute == LOGIN_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED -> SESSION_ROUTE
-            currentRoute in setOf(SESSION_ROUTE, PROFILE_ROUTE, ORDER_DETAIL_ROUTE) && state.phase == DriverAuthPhase.SIGNED_OUT -> LOGIN_ROUTE
+            (currentRoute in setOf(SESSION_ROUTE, PROFILE_ROUTE, ORDER_DETAIL_ROUTE) || currentRoute in REPORT_ROUTES) && state.phase == DriverAuthPhase.SIGNED_OUT -> LOGIN_ROUTE
             else -> null
         }
         if (destination != null) {
@@ -211,6 +256,7 @@ fun DriverAppNavigation() {
         }
     }
 
+    DriverReportsSystemBars(currentRoute in REPORT_ROUTES, backStackEntry?.lifecycle)
     NavHost(
         navController = navController,
         startDestination = SPLASH_ROUTE,
@@ -313,6 +359,12 @@ fun DriverAppNavigation() {
                 offerContent = { if (offerState.acceptedOrderId == null) DriverOfferStatusCard(offerState, offers::retryPending, offers::refresh) },
                 currentOrderContent = {
                     val visible = orderState.forDriver(state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED })
+                    DriverDeliveryRecoveryAction(orderState, state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED }) {
+                        val session = auth.state.value
+                        val current = orders.state.value.forDriver(session.user?.id?.takeIf { session.phase == DriverAuthPhase.AUTHENTICATED })
+                        if (current.deliveryPending != null || current.completion != null)
+                            navController.navigate(ORDER_DETAIL_ROUTE) { launchSingleTop = true }
+                    }
                     DriverCurrentOrderCard(if (offerState.pending?.action == OfferAction.ACCEPT && visible.order == null)
                         visible.copy(verified = false, error = "Kết quả Nhận đơn vẫn cần được xác minh bằng đúng thao tác trước đó.")
                         else visible, orders::refresh, onOpenDetails = {
@@ -320,20 +372,82 @@ fun DriverAppNavigation() {
                             val current = orders.state.value.forDriver(session.user?.id?.takeIf { session.phase == DriverAuthPhase.AUTHENTICATED })
                             if (current.verified && current.order != null && current.error == null)
                                 navController.navigate(ORDER_DETAIL_ROUTE) { launchSingleTop = true }
-                        })
+                        }, receivingOrdersOfflineConfirmed = confirmedOfflineForCurrentOrder(state, dashboardState, visible, offerState))
                 },
-                orderRefreshing = orderState.loading)
+                orderRefreshing = orderState.loading,
+                onOrders = { navController.openDriverTab(ORDERS_ROUTE) },
+                onEarnings = { navController.openDriverTab(EARNINGS_ROUTE) })
         }
         composable(ORDER_DETAIL_ROUTE) {
+            val detailOwner = state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED }
+            val detailOrderId = orderState.forDriver(detailOwner).order?.orderId
+            val detailPending = orderState.forDriver(detailOwner).deliveryPending
+            BackHandler { orders.dismissCompletion(); navController.popBackStack() }
             DriverOrderDetailScreen(orderState,
-                authenticatedUserId = state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED },
-                onBack = { navController.popBackStack() },
+                authenticatedUserId = detailOwner,
+                onBack = {
+                    val completed = orders.state.value.completion != null
+                    orders.dismissCompletion()
+                    if (completed) navController.popBackStack(SESSION_ROUTE, false) else navController.popBackStack()
+                },
                 onRetry = { if (auth.state.value.phase == DriverAuthPhase.AUTHENTICATED) orders.refresh() else auth.checkSession() },
                 onDirections = { target ->
                     val session = auth.state.value
-                    GoogleMapsDirections.openCurrentOrder(context, orders.state.value,
+                    val current = orders.state.value
+                    if (current.deliverySending || current.deliveryPending != null) vn.hutech.foodexpress.driver.ui.order.MapsOpenResult.UNVERIFIED
+                    else GoogleMapsDirections.openCurrentOrder(context, current,
                         session.user?.id?.takeIf { session.phase == DriverAuthPhase.AUTHENTICATED }, target)
+                }, onDelivery = { target ->
+                    val session = auth.state.value
+                    val current = orders.state.value
+                    if (detailOwner != null && session.phase == DriverAuthPhase.AUTHENTICATED && session.user?.id == detailOwner &&
+                        current.ownerId == detailOwner && current.order?.orderId == detailOrderId)
+                        orders.changeDeliveryStatus(target)
+                }, onRetryDelivery = {
+                    val session = auth.state.value
+                    val current = orders.state.value
+                    if (detailOwner != null && session.phase == DriverAuthPhase.AUTHENTICATED && session.user?.id == detailOwner &&
+                        current.ownerId == detailOwner && detailPending != null && current.deliveryPending == detailPending)
+                        orders.retryPendingDelivery()
                 })
+        }
+        composable(EARNINGS_ROUTE) {
+            val owner = state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED }
+            DriverEarningsScreen(reportState, owner, reports::selectPeriod, reports::refreshEarnings,
+                onSelect = { id ->
+                    if (owner != null && auth.state.value.user?.id == owner && auth.state.value.phase == DriverAuthPhase.AUTHENTICATED &&
+                        reports.state.value.ownerId == owner && reports.selectEarning(id)) navController.navigate(EARNING_DETAIL_ROUTE) { launchSingleTop = true }
+                }, offerContent = reportOfferContent, bottomBar = {
+                    DriverDashboardNavigation(onProfile = { navController.navigate(PROFILE_ROUTE) { launchSingleTop = true } }, selectedTab = 2,
+                        onHome = { navController.popBackStack(SESSION_ROUTE, false) }, onOrders = { navController.openDriverTab(ORDERS_ROUTE) },
+                        onEarnings = { navController.openDriverTab(EARNINGS_ROUTE) })
+                })
+        }
+        composable(EARNING_DETAIL_ROUTE) {
+            DriverEarningDetailScreen(reportState, state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED },
+                onBack = { navController.popBackStack() }, offerContent = reportOfferContent)
+        }
+        composable(ORDERS_ROUTE) {
+            val owner = state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED }
+            DriverOrdersScreen(reportState, orderState, owner, offerState.pending?.action == OfferAction.ACCEPT,
+                reports::selectHistory, orders::refresh, reports::refreshHistory, reports::loadMoreHistory,
+                onCurrent = {
+                    val session = auth.state.value
+                    val current = orders.state.value.forDriver(session.user?.id?.takeIf { session.phase == DriverAuthPhase.AUTHENTICATED })
+                    if (owner != null && session.user?.id == owner && (current.verified && current.order != null && current.error == null ||
+                        current.deliveryPending != null || current.completion != null)) navController.navigate(ORDER_DETAIL_ROUTE) { launchSingleTop = true }
+                }, onHistory = { id ->
+                    if (owner != null && auth.state.value.user?.id == owner && auth.state.value.phase == DriverAuthPhase.AUTHENTICATED &&
+                        reports.state.value.ownerId == owner && reports.selectHistoryOrder(id)) navController.navigate(HISTORY_DETAIL_ROUTE) { launchSingleTop = true }
+                }, offerContent = reportOfferContent, bottomBar = {
+                    DriverDashboardNavigation(onProfile = { navController.navigate(PROFILE_ROUTE) { launchSingleTop = true } }, selectedTab = 1,
+                        onHome = { navController.popBackStack(SESSION_ROUTE, false) }, onOrders = { navController.openDriverTab(ORDERS_ROUTE) },
+                        onEarnings = { navController.openDriverTab(EARNINGS_ROUTE) })
+                })
+        }
+        composable(HISTORY_DETAIL_ROUTE) {
+            DriverHistoryDetailScreen(reportState, state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED },
+                onBack = { navController.popBackStack() }, offerContent = reportOfferContent)
         }
         composable(
             PROFILE_ROUTE,
@@ -356,9 +470,16 @@ fun DriverAppNavigation() {
             }
         }
     }
-    if (currentRoute == SESSION_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED && foreground) {
-        DriverOfferDialog(offerState, offers::accept, offers::reject, offers::refresh)
+    if ((currentRoute == SESSION_ROUTE || currentRoute in REPORT_ROUTES) && state.phase == DriverAuthPhase.AUTHENTICATED && foreground) {
+        DriverOfferDialog(offerState, offers::accept, { rejectOrigin = currentRoute; offers.reject() }, offers::refresh)
     }
+    DriverRejectedOfferNotice(offerState, currentRoute, rejectOrigin,
+        state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED }, foreground,
+        offers::dismissRejectedNotice)
+}
+
+private fun androidx.navigation.NavHostController.openDriverTab(route: String) {
+    navigate(route) { popUpTo(SESSION_ROUTE) { inclusive = false }; launchSingleTop = true }
 }
 
 private fun androidx.navigation.NavHostController.finishRegistration() {

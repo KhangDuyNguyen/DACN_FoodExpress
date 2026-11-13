@@ -6,7 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -89,10 +89,11 @@ private fun OfferAddress(label: String, title: String, address: String?) {
     }
 }
 
-/** Results stay visible on Dashboard; no invented order detail or customer contact data. */
+/** Errors and unresolved actions stay available; confirmed Reject is transient, screen-scoped feedback. */
 @Composable
 fun DriverOfferStatusCard(state: DriverOffersUiState, onRetryPending: () -> Unit, onRefresh: () -> Unit) {
     val message = state.message ?: return
+    if (state.phase == DriverOfferPhase.REJECTED) return
     if (state.offer != null) return
     val accepted = state.phase == DriverOfferPhase.ACCEPTED
     val accent = if (accepted) Color(0xFF087D3C) else OfferRed
@@ -120,4 +121,21 @@ fun DriverOfferStatusCard(state: DriverOffersUiState, onRetryPending: () -> Unit
             if (state.pending == null && !accepted) TextButton(onClick = onRefresh) { Text("Tải lại lời mời", color = OfferRed) }
         }
     }
+}
+
+/** One host outside the NavHost. A route change cancels and consumes only this confirmed notice. */
+@Composable
+fun DriverRejectedOfferNotice(state: DriverOffersUiState, screen: String?, origin: String?, owner: Long?,
+    active: Boolean, onConsumed: (DriverOffersUiState) -> Unit) {
+    val host = remember(owner) { SnackbarHostState() }
+    LaunchedEffect(state.phase, state.message, screen, owner, active) {
+        if (state.phase == DriverOfferPhase.REJECTED && state.message != null) {
+            try {
+                if (owner != null && active && screen != null && screen == origin)
+                    host.showSnackbar("Đã từ chối lời mời", duration = SnackbarDuration.Short)
+            } finally { onConsumed(state) }
+        }
+    }
+    Box(Modifier.fillMaxSize().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 88.dp),
+        contentAlignment = Alignment.BottomCenter) { SnackbarHost(host) }
 }

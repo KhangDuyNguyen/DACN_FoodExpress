@@ -1,0 +1,11 @@
+// Test-only instrumentation selection; no production Gradle/dependency changes.
+allprojects { project ->
+    project.pluginManager.withPlugin('com.android.application') {
+        if (project.path == ':driver-app') {
+            project.extensions.getByName('androidComponents').finalizeDsl { android ->
+                android.defaultConfig.testInstrumentationRunner =
+                    'vn.hutech.foodexpress.driver.order.DriverDeliveryUiInstrumentation'
+            }
+        }
+    }
+}
