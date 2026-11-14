@@ -385,9 +385,9 @@ class AssignmentOfferIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"PENDING_PAYMENT", "ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP",
+    @ValueSource(strings = {"PENDING_PAYMENT", "ACCEPTED", "PICKED_UP",
             "DELIVERING", "DELIVERED", "CANCELLED", "REJECTED"})
-    void nonPlacedOrderDoesNotGetOffer(String status) {
+    void orderOutsideAssignmentStagesDoesNotGetOffer(String status) {
         driver(7, 10, NOW);
         jdbc.update("UPDATE orders SET status = :status WHERE id = 301", Map.of("status", status));
         assertTrue(service.createOffer(301).isEmpty());

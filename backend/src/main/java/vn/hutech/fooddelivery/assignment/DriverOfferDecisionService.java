@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
+import vn.hutech.fooddelivery.order.OrderRepository;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -22,16 +23,20 @@ public class DriverOfferDecisionService {
 
     private final DriverOfferRepository offers;
     private final AssignmentOfferRepository assignments;
+    private final OrderRepository orders;
     private final Clock clock;
 
     @Autowired
-    public DriverOfferDecisionService(DriverOfferRepository offers, AssignmentOfferRepository assignments) {
-        this(offers, assignments, Clock.systemDefaultZone());
+    public DriverOfferDecisionService(DriverOfferRepository offers, AssignmentOfferRepository assignments,
+                                      OrderRepository orders) {
+        this(offers, assignments, orders, Clock.systemDefaultZone());
     }
 
-    DriverOfferDecisionService(DriverOfferRepository offers, AssignmentOfferRepository assignments, Clock clock) {
+    DriverOfferDecisionService(DriverOfferRepository offers, AssignmentOfferRepository assignments,
+                               OrderRepository orders, Clock clock) {
         this.offers = offers;
         this.assignments = assignments;
+        this.orders = orders;
         this.clock = clock;
     }
 
@@ -42,7 +47,7 @@ public class DriverOfferDecisionService {
         var offer = locked.offer();
         // Replay chi xac nhan ket qua da commit; khong bat GPS/Online hien tai thay doi ket qua cu.
         if ("ACCEPTED".equals(offer.status())) {
-            if (!"PLACED".equals(order.status()) || order.driverId() == null
+            if (!order.acceptsDriver() || order.driverId() == null
                     || order.driverId().longValue() != offer.driverId()) {
                 throw new ConflictException("Đơn hàng không còn phù hợp với lời mời đã nhận");
             }
@@ -62,6 +67,14 @@ public class DriverOfferDecisionService {
         LocalDateTime respondedAt = now.truncatedTo(ChronoUnit.SECONDS);
         offers.respond(offer, "ACCEPTED", respondedAt);
         offers.assignOrder(order.id(), offer.driverId());
+        // Chi Accept tu PLACED moi bat dau chuan bi; Order lock ngan Merchant/Accept chuyen lui.
+        // Dung chung CAS/history cua Order trong cung transaction voi assignment va driver_id.
+        if ("PLACED".equals(order.status())) {
+            if (orders.updateStatus(order.id(), "PLACED", "PREPARING", null) != 1) {
+                throw new ConflictException("Đơn vừa được cập nhật, vui lòng tải lại");
+            }
+            orders.insertStatusHistory(order.id(), "PREPARING", userId, null);
+        }
         return new DriverOfferActionResponse(offer.id(), order.id(), "ACCEPTED", respondedAt);
     }
 

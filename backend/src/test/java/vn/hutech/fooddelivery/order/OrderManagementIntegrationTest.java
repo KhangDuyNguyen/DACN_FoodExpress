@@ -116,7 +116,8 @@ class OrderManagementIntegrationTest {
     // ----- Luong trang thai -----
 
     @Test
-    void merchantMovesOrderThroughAllSteps() throws Exception {
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Merchant nhan mon nhung khong con giao/hoan thanh thay tai xe.
+    void merchantPreparesOrderButCannotPerformDriverSteps() throws Exception {
         String customer = login("0911000001");
         String merchant = login("0922000001");
         long orderId = placeOrder(customer, Q1, "Cơm sườn nướng");
@@ -126,17 +127,15 @@ class OrderManagementIntegrationTest {
                 .andExpect(jsonPath("$.status").value("PREPARING"))
                 .andExpect(jsonPath("$.acceptedAt").value(notNullValue()));
         changeStatus(merchant, orderId, "{\"status\":\"DELIVERING\"}")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("DELIVERING"));
+                .andExpect(status().isConflict());
         changeStatus(merchant, orderId, "{\"status\":\"DELIVERED\"}")
+                .andExpect(status().isConflict());
+        mockMvc.perform(get("/api/orders/{id}", orderId).header("Authorization", customer))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("DELIVERED"))
-                .andExpect(jsonPath("$.deliveredAt").value(notNullValue()))
-                .andExpect(jsonPath("$.history.length()").value(4))
+                .andExpect(jsonPath("$.status").value("PREPARING"))
+                .andExpect(jsonPath("$.history.length()").value(2))
                 .andExpect(jsonPath("$.history[0].status").value("PLACED"))
-                .andExpect(jsonPath("$.history[1].status").value("PREPARING"))
-                .andExpect(jsonPath("$.history[2].status").value("DELIVERING"))
-                .andExpect(jsonPath("$.history[3].status").value("DELIVERED"));
+                .andExpect(jsonPath("$.history[1].status").value("PREPARING"));
 
         // Lich su ghi dung nguoi doi: buoc nhan don do chu quan 0922000001 bam
         assertEquals("0922000001", jdbc.queryForObject("""
@@ -144,10 +143,10 @@ class OrderManagementIntegrationTest {
                 WHERE h.order_id = :orderId AND h.status = 'PREPARING'
                 """, Map.of("orderId", orderId), String.class));
 
-        // Khach thay don da hoan thanh
+        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Trang thai chi tien tiep khi tai xe thuc hien luong giao.
         mockMvc.perform(get("/api/orders/{id}", orderId).header("Authorization", customer))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("DELIVERED"));
+                .andExpect(jsonPath("$.status").value("PREPARING"));
     }
 
     @Test
@@ -162,9 +161,10 @@ class OrderManagementIntegrationTest {
                 .andExpect(status().isConflict());
 
         changeStatus(merchant, orderId, "{\"status\":\"PREPARING\"}").andExpect(status().isOk());
-        // Da nhan don thi khong nhan lai lan nua
+        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]:
+        // Xac nhan PREPARING lap lai la no-op, lich su van chi co hai dong.
         changeStatus(merchant, orderId, "{\"status\":\"PREPARING\"}")
-                .andExpect(status().isConflict());
+                .andExpect(status().isOk());
 
         // Trang thai ngoai danh sach cho phep -> 400
         changeStatus(merchant, orderId, "{\"status\":\"PICKED_UP\"}")

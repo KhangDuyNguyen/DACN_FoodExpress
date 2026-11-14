@@ -140,9 +140,9 @@ class AssignmentServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"PENDING_PAYMENT", "ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP",
+    @ValueSource(strings = {"PENDING_PAYMENT", "ACCEPTED", "PICKED_UP",
             "DELIVERING", "DELIVERED", "CANCELLED", "REJECTED"})
-    void nonPlacedOrderIsIgnored(String status) {
+    void orderOutsideAssignmentStagesIsIgnored(String status) {
         when(offers.findOrder(301)).thenReturn(Optional.of(new OrderSnapshot(301, 1, null, status)));
 
         assertTrue(service().createOffer(301).isEmpty());

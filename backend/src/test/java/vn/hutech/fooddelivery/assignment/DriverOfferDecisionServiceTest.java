@@ -11,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
+import vn.hutech.fooddelivery.order.OrderRepository;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -38,10 +39,12 @@ class DriverOfferDecisionServiceTest {
 
     @Mock DriverOfferRepository offers;
     @Mock AssignmentOfferRepository assignments;
+    @Mock OrderRepository orders;
 
     private DriverOfferDecisionService service(LocalDateTime now) {
         var zone = ZoneId.of("Asia/Ho_Chi_Minh");
-        return new DriverOfferDecisionService(offers, assignments, Clock.fixed(now.atZone(zone).toInstant(), zone));
+        return new DriverOfferDecisionService(offers, assignments, orders,
+                Clock.fixed(now.atZone(zone).toInstant(), zone));
     }
 
     private DriverOfferRepository.OfferSnapshot given(DriverCandidate driver, String offerStatus,
@@ -54,6 +57,9 @@ class DriverOfferDecisionServiceTest {
                 new AssignmentOfferRepository.OrderSnapshot(301, 1, assignedDriver, orderStatus)));
         when(offers.lockDriverForUser(7, 42)).thenReturn(Optional.of(driver));
         when(offers.lockOffer(401)).thenReturn(Optional.of(offer));
+        if ("OFFERED".equals(offerStatus) && "PLACED".equals(orderStatus)) {
+            org.mockito.Mockito.lenient().when(orders.updateStatus(301, "PLACED", "PREPARING", null)).thenReturn(1);
+        }
         return offer;
     }
 
@@ -64,22 +70,43 @@ class DriverOfferDecisionServiceTest {
         assertEquals(new DriverOfferActionResponse(401, 301, "ACCEPTED", NOW),
                 service(NOW.plusNanos(999)).accept(42, 401));
 
-        var order = inOrder(offers, assignments);
+        var order = inOrder(offers, assignments, orders);
         order.verify(assignments).lockOrder(301);
         order.verify(offers).lockDriverForUser(7, 42);
         order.verify(offers).lockOffer(401);
         order.verify(offers).respond(offer, "ACCEPTED", NOW);
         order.verify(offers).assignOrder(301, 7);
+        order.verify(orders).updateStatus(301, "PLACED", "PREPARING", null);
+        order.verify(orders).insertStatusHistory(301, "PREPARING", 42, null);
     }
 
-    @Test
-    void acceptedReplayPreservesResultDespiteExpiredTimestampAndChangedGpsOnline() {
+    @ParameterizedTest
+    @ValueSource(strings = {"PLACED", "PREPARING", "READY_FOR_PICKUP"})
+    void acceptedReplayPreservesResultDespiteExpiredTimestampAndChangedGpsOnline(String status) {
         var offline = new DriverCandidate(7, "APPROVED", false, null, null, null, false, false);
-        var offer = given(offline, "ACCEPTED", 7L, "PLACED");
+        var offer = given(offline, "ACCEPTED", 7L, status);
 
         assertEquals(offer.response(), service(NOW.plusMinutes(5)).accept(42, 401));
         verify(offers, never()).respond(any(), anyString(), any());
         verify(offers, never()).assignOrder(anyLong(), anyLong());
+        verifyNoInteractions(orders);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PREPARING", "READY_FOR_PICKUP"})
+    void acceptKeepsMerchantProgressAndDoesNotAddDuplicatePreparationHistory(String status) {
+        given(DRIVER, "OFFERED", null, status);
+        assertEquals("ACCEPTED", service(NOW).accept(42, 401).status());
+        verify(offers).assignOrder(301, 7);
+        verifyNoInteractions(orders);
+    }
+
+    @Test
+    void preparationCasFailurePropagatesInsteadOfReportingAccepted() {
+        given(DRIVER, "OFFERED", null, "PLACED");
+        when(orders.updateStatus(301, "PLACED", "PREPARING", null)).thenReturn(0);
+        assertThrows(ConflictException.class, () -> service(NOW).accept(42, 401));
+        verify(orders, never()).insertStatusHistory(anyLong(), anyString(), anyLong(), any());
     }
 
     @ParameterizedTest

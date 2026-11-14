@@ -48,7 +48,7 @@ public class AssignmentOfferLifecycleService {
         LocalDateTime now = LocalDateTime.now(clock); // Lay lai gio sau khi cho khoa.
         String status;
         if (!order.get().canAssign()) {
-            status = "CANCELLED"; // Chi don PLACED/chua gan driver con nhan duoc offer.
+            status = "CANCELLED"; // Don ngoai giai doan cho tai xe hoac da gan driver khong con nhan offer.
         } else if (offer.get().expiresAt() == null || !offer.get().expiresAt().isAfter(now)) {
             status = "EXPIRED";
         } else {

@@ -311,6 +311,27 @@ public class OrderRepository {
 
     // ----- Doi trang thai (Module D) -----
 
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Khoa rieng Order truoc kiem tra quyen; khong khoa JOIN User/Restaurant.
+    public Optional<LockedOrder> lockOrder(long orderId) {
+        return jdbc.query("""
+                SELECT id, customer_id, restaurant_id, status FROM orders WHERE id = :id FOR UPDATE
+                """, Map.of("id", orderId), (rs, i) -> new LockedOrder(rs.getLong("id"),
+                rs.getLong("customer_id"), rs.getLong("restaurant_id"), rs.getString("status")))
+                .stream().findFirst();
+    }
+
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Goi sau Order lock de serial voi Accept, ke ca caller co snapshot cu.
+    public boolean hasAcceptedAssignmentForUpdate(long orderId) {
+        return !jdbc.query("""
+                SELECT id FROM order_assignments
+                WHERE order_id = :id AND status = 'ACCEPTED' ORDER BY id FOR UPDATE
+                """, Map.of("id", orderId), (rs, i) -> rs.getLong("id")).isEmpty();
+    }
+
+    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Snapshot toi thieu tu locking read, giu nguyen OrderRow/response cu.
+    public record LockedOrder(long id, long customerId, long restaurantId, String status) {
+    }
+
     /**
      * Doi trang thai CHI KHI don van dang o fromStatus (dieu kien "AND status = :fromStatus").
      * Neu giua luc doc va luc ghi co nguoi khac vua doi, cau lenh khop 0 dong -> tra ve 0.

@@ -40,7 +40,7 @@ public class DriverOfferRepository {
                 JOIN restaurants r ON r.id = o.restaurant_id
                 WHERE oa.driver_id = :driverId AND oa.status = 'OFFERED'
                   AND oa.offered_at <= :now AND oa.expires_at > :now
-                  AND o.status = 'PLACED' AND o.driver_id IS NULL
+                  AND o.status IN ('PLACED', 'PREPARING', 'READY_FOR_PICKUP') AND o.driver_id IS NULL
                 ORDER BY oa.offered_at, oa.id
                 """;
         // Cot DATETIME(0): so sanh voi floor(now) tuong duong chinh xac, tranh JDBC lam tron nano -> micro.
@@ -101,7 +101,7 @@ public class DriverOfferRepository {
     void assignOrder(long orderId, long driverId) {
         int updated = jdbc.update("""
                 UPDATE orders SET driver_id = :driverId
-                WHERE id = :orderId AND status = 'PLACED' AND driver_id IS NULL
+                WHERE id = :orderId AND status IN ('PLACED', 'PREPARING', 'READY_FOR_PICKUP') AND driver_id IS NULL
                 """, Map.of("orderId", orderId, "driverId", driverId));
         if (updated != 1) throw new ConflictException("Đơn hàng không còn nhận được tài xế");
     }

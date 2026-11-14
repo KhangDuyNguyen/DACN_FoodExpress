@@ -34,10 +34,12 @@ fun DriverSessionScreen(
     offerContent: @Composable () -> Unit = {},
     currentOrderContent: @Composable () -> Unit = {},
     orderRefreshing: Boolean = false,
+    onOrders: (() -> Unit)? = null,
+    onEarnings: (() -> Unit)? = null,
 ) {
     if (state.phase == DriverAuthPhase.AUTHENTICATED) {
         DriverDashboardScreen(dashboardState, onDashboardRetry, onReceivingOrders, onProfile, onLogout, onGpsRetry,
-            offerContent, currentOrderContent, orderRefreshing)
+            offerContent, currentOrderContent, orderRefreshing, onOrders, onEarnings)
         return
     }
     Column(
