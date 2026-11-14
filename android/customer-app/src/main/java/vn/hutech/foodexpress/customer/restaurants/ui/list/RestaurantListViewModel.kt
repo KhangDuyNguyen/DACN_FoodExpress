@@ -23,7 +23,7 @@ data class RestaurantListUiState(
     val selectedCuisineId: Int? = null,
     val keyword: String = "",
     val error: String? = null,
-    val hasMore: Boolean = true,
+    val hasMore: Boolean = false,  // Fix 7: default false tránh trigger loadMore sớm
     val page: Int = 0,
 )
 
@@ -39,7 +39,7 @@ class RestaurantListViewModel @Inject constructor(
 
     init {
         loadCuisines()
-        loadRestaurants(reset = true)
+        loadRestaurants(reset = true, keyword = "", cuisineId = null)
         observeSearch()
     }
 
@@ -48,7 +48,10 @@ class RestaurantListViewModel @Inject constructor(
         _searchQuery
             .debounce(400)
             .distinctUntilChanged()
-            .onEach { loadRestaurants(reset = true) }
+            .onEach { kw ->
+                // Fix 3: truyền keyword trực tiếp vào hàm, không đọc từ stale state
+                loadRestaurants(reset = true, keyword = kw, cuisineId = _uiState.value.selectedCuisineId)
+            }
             .launchIn(viewModelScope)
     }
 
@@ -58,16 +61,22 @@ class RestaurantListViewModel @Inject constructor(
     }
 
     fun onCuisineSelected(cuisineId: Int?) {
+        val kw = _uiState.value.keyword
         _uiState.value = _uiState.value.copy(selectedCuisineId = cuisineId)
-        loadRestaurants(reset = true)
+        // Fix 3: truyền cuisineId trực tiếp vào hàm
+        loadRestaurants(reset = true, keyword = kw, cuisineId = cuisineId)
     }
 
     fun loadMore() {
-        if (_uiState.value.isLoading || !_uiState.value.hasMore) return
-        loadRestaurants(reset = false)
+        val state = _uiState.value
+        if (state.isLoading || !state.hasMore) return
+        loadRestaurants(reset = false, keyword = state.keyword, cuisineId = state.selectedCuisineId)
     }
 
-    fun retry() = loadRestaurants(reset = true)
+    fun retry() {
+        val state = _uiState.value
+        loadRestaurants(reset = true, keyword = state.keyword, cuisineId = state.selectedCuisineId)
+    }
 
     private fun loadCuisines() {
         viewModelScope.launch {
@@ -76,25 +85,28 @@ class RestaurantListViewModel @Inject constructor(
         }
     }
 
-    private fun loadRestaurants(reset: Boolean) {
-        val state = _uiState.value
-        val nextPage = if (reset) 0 else state.page
-        _uiState.value = state.copy(isLoading = true, error = null)
+    // Fix 3: keyword và cuisineId truyền trực tiếp — không đọc từ stale state snapshot
+    private fun loadRestaurants(reset: Boolean, keyword: String, cuisineId: Int?) {
+        val currentPage = if (reset) 0 else _uiState.value.page
+        val currentList = if (reset) emptyList() else _uiState.value.restaurants
+
+        _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+
         viewModelScope.launch {
             runCatching {
                 api.searchRestaurants(
-                    keyword = state.keyword.takeIf { it.isNotBlank() },
-                    cuisineId = state.selectedCuisineId,
-                    page = nextPage,
+                    keyword = keyword.takeIf { it.isNotBlank() },
+                    cuisineId = cuisineId,
+                    page = currentPage,
                     size = 20,
                 )
             }.onSuccess { resp ->
-                val newList = if (reset) resp.data else state.restaurants + resp.data
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    restaurants = newList,
-                    page = nextPage + 1,
-                    hasMore = resp.data.size >= 20,
+                    restaurants = currentList + resp.data,
+                    page = currentPage + 1,
+                    // Fix 4: dùng totalPages thay vì so sánh size
+                    hasMore = (currentPage + 1) < resp.totalPages,
                 )
             }.onFailure { err ->
                 _uiState.value = _uiState.value.copy(

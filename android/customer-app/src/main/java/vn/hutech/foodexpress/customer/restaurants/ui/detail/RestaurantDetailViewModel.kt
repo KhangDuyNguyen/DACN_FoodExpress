@@ -27,20 +27,33 @@ class RestaurantDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val restaurantId: Long = checkNotNull(savedStateHandle["restaurantId"])
+    // Fix 5: không dùng checkNotNull — xử lý gracefully thay vì crash
+    private val restaurantId: Long? = savedStateHandle["restaurantId"]
 
     private val _uiState = MutableStateFlow(RestaurantDetailUiState())
     val uiState: StateFlow<RestaurantDetailUiState> = _uiState
 
-    init { load() }
+    init {
+        if (restaurantId == null) {
+            _uiState.value = RestaurantDetailUiState(
+                isLoading = false,
+                error = "ID quán không hợp lệ. Vui lòng quay lại và thử lại.",
+            )
+        } else {
+            load()
+        }
+    }
 
-    fun retry() = load()
+    fun retry() {
+        if (restaurantId != null) load()
+    }
 
     fun selectCategory(categoryId: Long) {
         _uiState.value = _uiState.value.copy(selectedCategoryId = categoryId)
     }
 
     private fun load() {
+        if (restaurantId == null) return
         _uiState.value = RestaurantDetailUiState(isLoading = true)
         viewModelScope.launch {
             runCatching {

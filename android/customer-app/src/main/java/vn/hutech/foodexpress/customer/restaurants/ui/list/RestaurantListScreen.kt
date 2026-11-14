@@ -75,7 +75,7 @@ fun RestaurantListScreen(
     LaunchedEffect(listState) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
             .collect { lastIndex ->
-                if (lastIndex != null && lastIndex >= state.restaurants.size - 3) {
+                if (lastIndex != null && state.restaurants.isNotEmpty() && lastIndex >= state.restaurants.size - 3) {
                     viewModel.loadMore()
                 }
             }
