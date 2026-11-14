@@ -58,7 +58,7 @@ public class SecurityConfig {
                                 "/api/health",
                                 "/api/auth/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
-                                "/ws/**",
+                                "/ws", "/ws/**",
                                 "/api/payments/*/return", "/api/payments/*/ipn",
                                 // Trang loi noi bo cua Spring, neu chan thi loi cua API cong khai bi doi thanh 401
                                 "/error"

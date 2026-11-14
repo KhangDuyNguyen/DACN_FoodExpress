@@ -7,6 +7,7 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import vn.hutech.fooddelivery.cart.CartLine;
+import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderHistoryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderItemResponse;
 import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
@@ -14,6 +15,8 @@ import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -307,6 +310,111 @@ public class OrderRepository {
         Long count = jdbc.queryForObject(sql, Map.of("restaurantId", restaurantId, "ownerUserId", ownerUserId),
                 Long.class);
         return count != null && count > 0;
+    }
+
+    /** Kiểm tra nhà hàng có tồn tại trong hệ thống không. */
+    public boolean restaurantExists(long restaurantId) {
+        String sql = "SELECT COUNT(*) FROM restaurants WHERE id = :restaurantId";
+        Long count = jdbc.queryForObject(sql, Map.of("restaurantId", restaurantId), Long.class);
+        return count != null && count > 0;
+    }
+
+    /**
+     * Danh sách đơn của cửa hàng kèm danh sách món ăn, SĐT nhận hàng và ghi chú đơn hàng.
+     * Dùng truy vấn batch order_items theo danh sách orderIds để tránh N+1 query.
+     */
+    public List<MerchantOrderSummaryResponse> findMerchantSummariesByOwner(long ownerUserId, Long restaurantId,
+                                                                           String status, int limit, long offset) {
+        String sql = """
+                SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name, o.status, o.total_amount,
+                       (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
+                       o.receiver_name, o.receiver_phone, o.delivery_address, o.note, o.payment_method, o.created_at
+                FROM orders o
+                JOIN restaurants r ON r.id = o.restaurant_id
+                JOIN merchants m ON m.id = r.merchant_id
+                WHERE m.owner_user_id = :ownerUserId
+                  AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
+                  AND (:status IS NULL OR o.status = :status)
+                ORDER BY o.created_at DESC, o.id DESC
+                LIMIT :limit OFFSET :offset
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("ownerUserId", ownerUserId)
+                .addValue("restaurantId", restaurantId)
+                .addValue("status", status)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+
+        List<MerchantOrderSummaryResponse> baseRows = jdbc.query(sql, params, (rs, i) -> new MerchantOrderSummaryResponse(
+                rs.getLong("id"),
+                rs.getString("code"),
+                rs.getLong("restaurant_id"),
+                rs.getString("restaurant_name"),
+                rs.getString("status"),
+                rs.getBigDecimal("total_amount"),
+                rs.getInt("item_count"),
+                rs.getString("receiver_name"),
+                rs.getString("receiver_phone"),
+                rs.getString("delivery_address"),
+                rs.getString("note"),
+                rs.getString("payment_method"),
+                List.of(),
+                toLocalDateTime(rs.getTimestamp("created_at"))
+        ));
+
+        if (baseRows.isEmpty()) {
+            return baseRows;
+        }
+
+        List<Long> orderIds = baseRows.stream().map(MerchantOrderSummaryResponse::id).toList();
+        Map<Long, List<OrderItemResponse>> itemsByOrderId = findItemsByOrderIds(orderIds);
+
+        return baseRows.stream()
+                .map(row -> new MerchantOrderSummaryResponse(
+                        row.id(),
+                        row.code(),
+                        row.restaurantId(),
+                        row.restaurantName(),
+                        row.status(),
+                        row.totalAmount(),
+                        row.itemCount(),
+                        row.receiverName(),
+                        row.receiverPhone(),
+                        row.deliveryAddress(),
+                        row.note(),
+                        row.paymentMethod(),
+                        itemsByOrderId.getOrDefault(row.id(), List.of()),
+                        row.createdAt()
+                ))
+                .toList();
+    }
+
+    public Map<Long, List<OrderItemResponse>> findItemsByOrderIds(List<Long> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Map.of();
+        }
+        String sql = """
+                SELECT order_id, menu_item_id, item_name, unit_price, quantity, note
+                FROM order_items
+                WHERE order_id IN (:orderIds)
+                ORDER BY id
+                """;
+        Map<Long, List<OrderItemResponse>> result = new LinkedHashMap<>();
+        jdbc.query(sql, Map.of("orderIds", orderIds), rs -> {
+            long orderId = rs.getLong("order_id");
+            BigDecimal unitPrice = rs.getBigDecimal("unit_price");
+            int quantity = rs.getInt("quantity");
+            OrderItemResponse item = new OrderItemResponse(
+                    rs.getObject("menu_item_id", Long.class),
+                    rs.getString("item_name"),
+                    unitPrice,
+                    quantity,
+                    rs.getString("note"),
+                    unitPrice.multiply(BigDecimal.valueOf(quantity))
+            );
+            result.computeIfAbsent(orderId, k -> new ArrayList<>()).add(item);
+        });
+        return result;
     }
 
     // ----- Doi trang thai (Module D) -----
