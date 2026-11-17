@@ -31,8 +31,8 @@ import vn.hutech.fooddelivery.security.AuthUser;
 @Tag(name = "Orders", description = "Đặt hàng và đơn của khách (chỉ CUSTOMER)")
 public class OrderController {
 
-    /** Cac trang thai dung trong tuan 3, dung de kiem tra tham so ?status= */
-    static final String STATUS_PATTERN = "PLACED|PREPARING|DELIVERING|DELIVERED|CANCELLED";
+    /** Cac trang thai dung trong tuan 3, dung de kiem tra tham so ?status= (cho phep rong de lay tat ca) */
+    static final String STATUS_PATTERN = "^$|PLACED|PREPARING|DELIVERING|DELIVERED|CANCELLED";
 
     private final OrderService orderService;
     private final OrderManagementService orderManagementService;

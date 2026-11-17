@@ -38,6 +38,13 @@ export interface OrderSummary {
   createdAt: string
 }
 
+export interface MerchantOrderSummary extends OrderSummary {
+  receiverPhone: string
+  note: string | null
+  paymentMethod: 'COD' | 'VNPAY' | 'MOMO'
+  items: OrderItem[]
+}
+
 export interface PriceBreakdown {
   subtotal: number
   deliveryFee: number

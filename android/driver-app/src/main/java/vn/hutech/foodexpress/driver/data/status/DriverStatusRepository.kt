@@ -11,6 +11,7 @@ sealed interface DriverStatusResult {
     data object OnlineConfirmed : DriverStatusResult
     data object OfflineConfirmed : DriverStatusResult
     data object SessionExpired : DriverStatusResult
+    data object OfflineConflict : DriverStatusResult
     data class Failed(val message: String) : DriverStatusResult
 }
 
@@ -21,7 +22,12 @@ class DriverStatusRepository @Inject constructor(
     suspend fun goOnline(): DriverStatusResult = update(true, auth.currentAccessToken())
     suspend fun goOffline(): DriverStatusResult = update(false, auth.currentAccessToken())
 
-    // Capture only for a queued best-effort OFF during logout; never use a new account's JWT.
+    // Bind commands to the verified owner, including queued work during account changes.
+    fun onlineForCurrentSession(): suspend () -> DriverStatusResult {
+        val token = auth.currentAccessToken()
+        return { update(true, token) }
+    }
+
     fun offlineForCurrentSession(): suspend () -> DriverStatusResult {
         val token = auth.currentAccessToken()
         return { update(false, token) }
@@ -52,7 +58,8 @@ class DriverStatusRepository @Inject constructor(
         return when (response.code()) {
             401 -> DriverStatusResult.SessionExpired
             403 -> DriverStatusResult.Failed("Máy chủ từ chối thay đổi trạng thái nhận đơn. Vui lòng tải lại hồ sơ để kiểm tra quyền truy cập.")
-            409 -> DriverStatusResult.Failed("Trạng thái hoặc điều kiện nhận đơn đã thay đổi. Vui lòng tải lại trạng thái trước khi thử tiếp.")
+            409 -> if (!online) DriverStatusResult.OfflineConflict else
+                DriverStatusResult.Failed("Trạng thái hoặc điều kiện nhận đơn đã thay đổi. Vui lòng tải lại trạng thái trước khi thử tiếp.")
             400 -> DriverStatusResult.Failed("Máy chủ không chấp nhận yêu cầu trạng thái. Vui lòng tải lại hoặc thử sau.")
             404 -> DriverStatusResult.Failed("Không tìm thấy hồ sơ tài xế. Vui lòng tải lại hoặc liên hệ hỗ trợ.")
             else -> DriverStatusResult.Failed("Máy chủ chưa xác nhận yêu cầu nhận đơn. Vui lòng tải lại trạng thái và thử sau.")

@@ -1,5 +1,6 @@
 package vn.hutech.fooddelivery.order;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +13,7 @@ import vn.hutech.fooddelivery.order.dto.CreateOrderRequest;
 import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
 import vn.hutech.fooddelivery.order.dto.OrderPreviewRequest;
 import vn.hutech.fooddelivery.order.dto.PriceBreakdown;
+import vn.hutech.fooddelivery.order.event.OrderPlacedEvent;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -35,10 +37,18 @@ public class OrderService {
 
     private final CartRepository cartRepository;
     private final OrderRepository orderRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OrderService(CartRepository cartRepository, OrderRepository orderRepository) {
+        this(cartRepository, orderRepository, null);
+    }
+
+    public OrderService(CartRepository cartRepository,
+                        OrderRepository orderRepository,
+                        ApplicationEventPublisher eventPublisher) {
         this.cartRepository = cartRepository;
         this.orderRepository = orderRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -104,7 +114,12 @@ public class OrderService {
         // 5. Dat xong thi xoa gio (cart_items tu xoa theo nho ON DELETE CASCADE)
         cartRepository.deleteCart(cart.id());
 
-        return getDetail(orderId);
+        OrderDetailResponse response = getDetail(orderId);
+        if (eventPublisher != null) {
+            eventPublisher.publishEvent(new OrderPlacedEvent(orderId, restaurant.id(), response));
+        }
+
+        return response;
     }
 
     /** Chi tiet don theo id (Module D dung lai, kem kiem tra chu don). */

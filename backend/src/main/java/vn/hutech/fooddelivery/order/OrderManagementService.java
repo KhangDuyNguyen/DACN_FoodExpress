@@ -8,6 +8,7 @@ import vn.hutech.fooddelivery.common.NotFoundException;
 import vn.hutech.fooddelivery.common.PageResponse;
 import vn.hutech.fooddelivery.order.OrderStatusFlow.Actor;
 import vn.hutech.fooddelivery.order.dto.ChangeOrderStatusRequest;
+import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
 import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
 
@@ -31,11 +32,12 @@ public class OrderManagementService {
 
     @Transactional(readOnly = true)
     public PageResponse<OrderSummaryResponse> listCustomerOrders(long customerId, String status, int page, int size) {
+        String normalizedStatus = normalizeStatus(status);
         long offset = (long) page * size;
         return PageResponse.of(
-                orderRepository.findSummariesByCustomer(customerId, status, size, offset),
+                orderRepository.findSummariesByCustomer(customerId, normalizedStatus, size, offset),
                 page, size,
-                orderRepository.countByCustomer(customerId, status));
+                orderRepository.countByCustomer(customerId, normalizedStatus));
     }
 
     @Transactional(readOnly = true)
@@ -55,17 +57,27 @@ public class OrderManagementService {
     // ----- Chu quan -----
 
     @Transactional(readOnly = true)
-    public PageResponse<OrderSummaryResponse> listMerchantOrders(long ownerUserId, Long restaurantId, String status,
-                                                                 int page, int size) {
-        // Loc theo 1 quan cu the thi quan do phai la cua minh
-        if (restaurantId != null && !orderRepository.isRestaurantOwnedBy(restaurantId, ownerUserId)) {
-            throw new ForbiddenException("Bạn không phải chủ quán này");
+    public PageResponse<MerchantOrderSummaryResponse> listMerchantOrders(long ownerUserId, Long restaurantId, String status,
+                                                                         int page, int size) {
+        // Kiem tra nha hang ton tai va thuoc quyen so huu cua chu quan dang dang nhap
+        if (restaurantId != null) {
+            if (!orderRepository.restaurantExists(restaurantId)) {
+                throw new NotFoundException("Không tìm thấy nhà hàng #" + restaurantId);
+            }
+            if (!orderRepository.isRestaurantOwnedBy(restaurantId, ownerUserId)) {
+                throw new ForbiddenException("Bạn không phải chủ quán này");
+            }
         }
+        String normalizedStatus = normalizeStatus(status);
         long offset = (long) page * size;
         return PageResponse.of(
-                orderRepository.findSummariesByOwner(ownerUserId, restaurantId, status, size, offset),
+                orderRepository.findMerchantSummariesByOwner(ownerUserId, restaurantId, normalizedStatus, size, offset),
                 page, size,
-                orderRepository.countByOwner(ownerUserId, restaurantId, status));
+                orderRepository.countByOwner(ownerUserId, restaurantId, normalizedStatus));
+    }
+
+    private static String normalizeStatus(String status) {
+        return (status == null || status.isBlank()) ? null : status.trim();
     }
 
     @Transactional(readOnly = true)

@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -66,6 +67,9 @@ fun DriverDashboardScreen(
     onProfile: () -> Unit,
     onLogout: () -> Unit,
     onGpsRetry: () -> Unit,
+    offerContent: @Composable () -> Unit = {},
+    currentOrderContent: @Composable () -> Unit = {},
+    orderRefreshing: Boolean = false,
 ) {
     val context = LocalContext.current
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
@@ -90,22 +94,23 @@ fun DriverDashboardScreen(
     val refreshThreshold = 100.dp
     val scope = rememberCoroutineScope()
     val latestState by rememberUpdatedState(state)
+    val latestOrderRefreshing by rememberUpdatedState(orderRefreshing)
     var gestureStartedAtTop by remember { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
-    val showRefreshIndicator = refreshing || state.loading
+    val showRefreshIndicator = refreshing || state.loading || orderRefreshing
     var refreshSnapshot by remember { mutableStateOf<DriverProfile?>(null) }
     // Keep the last rendered data only while a user-requested GET is in progress.
     // Errors and expired sessions always use the actual ViewModel state.
     val profile = state.profile ?: refreshSnapshot.takeIf { state.loading && !state.sessionExpired }
     val refresh = {
-        if (!refreshing && !state.loading && !state.saving && !state.sessionExpired) {
+        if (!refreshing && !state.loading && !orderRefreshing && !state.saving && !state.sessionExpired) {
             refreshSnapshot = state.profile
             refreshing = true
             onRetry()
             scope.launch {
                 // This minimum is visual only: GET starts above and data is never delayed.
                 delay(450)
-                snapshotFlow { latestState.loading }.first { !it }
+                snapshotFlow { latestState.loading || latestOrderRefreshing }.first { !it }
                 refreshing = false
             }
         }
@@ -129,7 +134,7 @@ fun DriverDashboardScreen(
         }.pullToRefresh(
             isRefreshing = showRefreshIndicator, state = pullState,
             threshold = refreshThreshold,
-            enabled = gestureStartedAtTop && !refreshing && !state.loading && !state.saving && !state.sessionExpired,
+            enabled = gestureStartedAtTop && !refreshing && !state.loading && !orderRefreshing && !state.saving && !state.sessionExpired,
             onRefresh = { if (gestureStartedAtTop && scrollState.value == 0) refresh() },
         ), contentAlignment = Alignment.TopCenter) {
             Column(
@@ -169,6 +174,7 @@ fun DriverDashboardScreen(
                     Text("GPS chưa sẵn sàng. Vị trí hiện tại chưa được xác minh; chưa thể bật Online.",
                         color = DashboardMuted, fontSize = 12.sp, lineHeight = 16.sp)
                 }
+                offerContent()
                 Text("Tổng quan hôm nay", color = DashboardInk, fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 22.sp)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -181,18 +187,12 @@ fun DriverDashboardScreen(
                     }
                 }
                 Text("Đơn hàng hiện tại", color = DashboardInk, fontWeight = FontWeight.Bold, fontSize = 16.sp, lineHeight = 22.sp)
-                DashboardCard(DashboardPink) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        DashboardIcon(DashboardIconType.Box, DashboardRed, Modifier.size(28.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Chưa tích hợp dữ liệu đơn hàng", color = DashboardRed, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp)
-                            Text("Đơn hàng và nhận đơn sẽ được triển khai ở tuần sau.", color = DashboardMuted, fontSize = 12.sp, lineHeight = 16.sp)
-                        }
-                    }
-                }
+                currentOrderContent()
             }
             PullToRefreshDefaults.Indicator(state = pullState, isRefreshing = showRefreshIndicator,
-                modifier = Modifier.align(Alignment.TopCenter).zIndex(1f), maxDistance = refreshThreshold,
+                modifier = Modifier.align(Alignment.TopCenter).zIndex(1f).semantics {
+                    if (showRefreshIndicator) contentDescription = "Đang làm mới Dashboard"
+                }, maxDistance = refreshThreshold,
                 containerColor = Color.White, color = DashboardRed)
         }
     }
@@ -237,18 +237,25 @@ private fun ApprovalSummary(profile: DriverProfile) {
 private fun ReceivingOrdersCard(state: DriverDashboardUiState, onChange: (Boolean) -> Unit, onGpsAction: () -> Unit) {
     val online = state.profile?.isOnline == true
     val approved = state.profile?.status == "APPROVED"
+    val activeOrder = state.orderKnowledge == DriverOrderKnowledge.ACTIVE
+    val deliveryVerifiedIdle = state.orderKnowledge == DriverOrderKnowledge.IDLE && !state.acceptPending
     val canRequest = approved && !state.statusUnknown && !state.loading && state.gps.status in setOf(
         DriverGpsStatus.READY, DriverGpsStatus.WAITING, DriverGpsStatus.STALE, DriverGpsStatus.INACCURATE)
     DashboardCard(if (online && !state.statusUnknown) Color(0xFFE5F7EB) else Color(0xFFF2F2F4)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             DashboardIcon(DashboardIconType.Pin, if (online) DashboardGreen else DashboardMuted, Modifier.size(24.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(if (state.statusUnknown) "Trạng thái chưa xác nhận" else if (online) "Đang bật nhận đơn trên máy chủ" else "Bật nhận đơn", color = DashboardInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp)
-                Text(if (state.statusUnknown) "Cần tải lại để đối chiếu với máy chủ."
+                Text(if (state.acceptPending) "Đang xác minh Nhận đơn" else if (activeOrder) "Đang thực hiện đơn hàng"
+                    else if (!deliveryVerifiedIdle) "Đang xác minh đơn hiện tại"
+                    else if (state.statusUnknown) "Trạng thái chưa xác nhận" else if (online) "Đang bật nhận đơn trên máy chủ" else "Bật nhận đơn", color = DashboardInk, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp)
+                Text(if (state.acceptPending) "Chờ Backend xác nhận kết quả Nhận đơn trước khi thay đổi trạng thái."
+                    else if (activeOrder) "Chưa thể tắt nhận đơn khi đang thực hiện đơn hàng."
+                    else if (!deliveryVerifiedIdle) "Chưa thể thay đổi trạng thái nhận đơn trước khi xác minh."
+                    else if (state.statusUnknown) "Cần tải lại để đối chiếu với máy chủ."
                     else if (online) "Máy chủ đã xác nhận Online." else "Đang Offline theo phản hồi máy chủ.", color = DashboardMuted, fontSize = 12.sp, lineHeight = 16.sp)
             }
             if (state.saving) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-            Switch(checked = online, onCheckedChange = onChange, enabled = !state.saving && (online || canRequest))
+            Switch(checked = online, onCheckedChange = onChange, enabled = deliveryVerifiedIdle && !state.saving && (online || canRequest))
         }
         Text(if (approved) state.gps.message else "Hồ sơ chưa được duyệt; chưa thể bật Online.", color = DashboardMuted, fontSize = 12.sp, lineHeight = 16.sp)
         if (state.enablingOnline) TextButton(onClick = { onChange(false) }) { Text("Hủy yêu cầu bật nhận đơn") }

@@ -145,6 +145,37 @@ class DriverStatusServiceTest {
         assertThrows(ConflictException.class, () -> service.updateStatus(42, new DriverStatusRequest(true)));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PENDING", "APPROVED", "REJECTED", "SUSPENDED"})
+    void activeOrderBlocksOnlineToOfflineWithoutChangingApprovalRules(String status) {
+        given(new DriverRepository.DriverStatusRow(7, status, true, null, null, null));
+        when(driverRepository.hasActiveOrder(7)).thenReturn(true);
+        assertThrows(ConflictException.class, () -> service.updateStatus(42, new DriverStatusRequest(false)));
+        var calls = inOrder(driverRepository);
+        calls.verify(driverRepository).findStatusByUserIdForUpdate(42);
+        calls.verify(driverRepository).hasActiveOrder(7);
+        verify(driverRepository, never()).updateOnline(anyLong(), anyBoolean());
+    }
+
+    @Test
+    void alreadyOfflineDoesNotQueryOrdersOrWriteEvenIfAssignedAnActiveOrder() {
+        given(new DriverRepository.DriverStatusRow(7, "APPROVED", false, null, null, null));
+        assertEquals(false, service.updateStatus(42, new DriverStatusRequest(false)).isOnline());
+        verify(driverRepository, never()).hasActiveOrder(anyLong());
+        verify(driverRepository, never()).updateOnline(anyLong(), anyBoolean());
+    }
+
+    @Test
+    void idleOffReadsActiveOrderAfterDriverLockAndBeforeUpdate() {
+        given(new DriverRepository.DriverStatusRow(7, "APPROVED", true, null, null, null));
+        when(driverRepository.updateOnline(7, false)).thenReturn(1);
+        assertEquals(false, service.updateStatus(42, new DriverStatusRequest(false)).isOnline());
+        var calls = inOrder(driverRepository);
+        calls.verify(driverRepository).findStatusByUserIdForUpdate(42);
+        calls.verify(driverRepository).hasActiveOrder(7);
+        calls.verify(driverRepository).updateOnline(7, false);
+    }
+
     private void given(DriverRepository.DriverStatusRow row) {
         when(driverRepository.findStatusByUserIdForUpdate(42)).thenReturn(Optional.of(row));
     }

@@ -17,8 +17,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import vn.hutech.fooddelivery.common.PageResponse;
 import vn.hutech.fooddelivery.order.dto.ChangeOrderStatusRequest;
+import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
-import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
 import vn.hutech.fooddelivery.security.AuthUser;
 
 /** Don cua cac quan thuoc chu quan dang dang nhap. /api/merchant/** chi MERCHANT goi duoc (SecurityConfig). */
@@ -34,8 +34,8 @@ public class MerchantOrderController {
     }
 
     @GetMapping
-    @Operation(summary = "Đơn của các quán mình sở hữu; restaurantId của chủ khác: 403")
-    public ResponseEntity<PageResponse<OrderSummaryResponse>> list(
+    @Operation(summary = "Đơn của các quán mình sở hữu; restaurantId của chủ khác: 403; không tồn tại: 404")
+    public ResponseEntity<PageResponse<MerchantOrderSummaryResponse>> list(
             @AuthenticationPrincipal AuthUser user,
             @RequestParam(required = false) Long restaurantId,
             @RequestParam(required = false) @Pattern(regexp = OrderController.STATUS_PATTERN) String status,
