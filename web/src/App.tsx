@@ -16,6 +16,7 @@ import OrderTracking from './pages/customer/OrderTracking'
 import Register from './pages/customer/Register'
 import RestaurantDetail from './pages/customer/RestaurantDetail'
 import RestaurantList from './pages/customer/RestaurantList'
+import VnPayReturn from './pages/customer/VnPayReturn'
 
 // Quản trị viên (Admin - Sầm Xuân Điệp)
 import AdminDriverApprovalPage from './pages/admin/AdminDriverApprovalPage'
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="orders" element={<MyOrders />} />
           <Route path="orders/:id" element={<OrderTracking />} />
           <Route path="orders/:id/success" element={<OrderSuccess />} />
+          <Route path="payment/vnpay-return" element={<VnPayReturn />} />
           <Route path="profile/addresses" element={<Addresses />} />
         </Route>
       </Route>

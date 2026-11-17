@@ -10,6 +10,17 @@ import { fetchAvailableVouchers, type Voucher } from '../../api/voucher'
 // Trang so dia chi, luu xong quay lai day
 const ADDRESS_BOOK_LINK = '/profile/addresses?redirect=/checkout'
 
+type PaymentMethod = 'COD' | 'VNPAY'
+
+const PAYMENT_OPTIONS: { value: PaymentMethod; label: string; hint: string }[] = [
+  { value: 'COD', label: '💵 Thanh toán khi nhận hàng (COD)', hint: 'Trả tiền mặt khi nhận món' },
+  {
+    value: 'VNPAY',
+    label: '💳 Thanh toán qua VNPay',
+    hint: 'Thẻ ATM, tài khoản ngân hàng hoặc QR. Quán nhận đơn sau khi bạn thanh toán xong',
+  },
+]
+
 function vnd(amount: number) {
   return `${amount.toLocaleString('vi-VN')}đ`
 }
@@ -40,6 +51,8 @@ export default function Checkout() {
   const [note, setNote] = useState('')
   const [voucherInput, setVoucherInput] = useState('')
   const [appliedCode, setAppliedCode] = useState<string | null>(null)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('COD')
+  const [redirecting, setRedirecting] = useState(false) // dang chuyen sang trang VNPay
 
   // Chua chon thi lay dia chi dau tien (backend tra dia chi mac dinh len dau)
   const selected = addresses.find((a) => a.id === selectedId) ?? addresses[0]
@@ -73,7 +86,14 @@ export default function Checkout() {
   const orderMutation = useMutation({
     mutationFn: createOrder,
     onSuccess: (order) => {
-      // Server da xoa gio sau khi dat thanh cong
+      // VNPay: chuyen ca trang sang cong thanh toan. Tra xong VNPay dua ve /payment/vnpay-return.
+      // (Khong lam moi gio o day: gio rong se dua trang ve /cart truoc khi kip roi sang VNPay.)
+      if (order.paymentUrl) {
+        setRedirecting(true)
+        window.location.assign(order.paymentUrl)
+        return
+      }
+      // COD: server da xoa gio sau khi dat thanh cong
       queryClient.invalidateQueries({ queryKey: cartQueryKey })
       navigate(`/orders/${order.id}/success`, { replace: true, state: { order } })
     },
@@ -90,8 +110,14 @@ export default function Checkout() {
       note: note.trim() || undefined,
       // Chi gui ma da duoc xem truoc xac nhan; server van kiem tra lai va tu tinh so tien giam
       voucherCode: appliedVoucherCode ?? undefined,
-      paymentMethod: 'COD',
+      paymentMethod,
     })
+  }
+
+  function buttonText() {
+    if (redirecting) return 'Đang chuyển sang VNPay...'
+    if (orderMutation.isPending) return 'Đang đặt hàng...'
+    return paymentMethod === 'VNPAY' ? 'Đặt hàng và thanh toán VNPay' : 'Đặt hàng'
   }
 
   if (isLoading || loadingAddresses) return <p className="text-gray-500">Đang tải...</p>
@@ -156,7 +182,26 @@ export default function Checkout() {
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <p className="font-medium text-gray-800">Thanh toán</p>
-          <p className="mt-2 text-sm text-gray-600">💵 Thanh toán khi nhận hàng (COD)</p>
+          <div className="mt-2 space-y-2">
+            {PAYMENT_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className="flex cursor-pointer items-start gap-2 rounded border p-2 hover:bg-gray-50"
+              >
+                <input
+                  type="radio"
+                  name="paymentMethod"
+                  checked={paymentMethod === option.value}
+                  onChange={() => setPaymentMethod(option.value)}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-medium text-gray-800">{option.label}</span>
+                  <span className="block text-sm text-gray-500">{option.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -257,10 +302,10 @@ export default function Checkout() {
 
           <button
             onClick={placeOrder}
-            disabled={orderMutation.isPending || !preview.data || !selected}
+            disabled={orderMutation.isPending || redirecting || !preview.data || !selected}
             className="mt-4 w-full rounded-lg bg-orange-600 py-2 font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {orderMutation.isPending ? 'Đang đặt hàng...' : 'Đặt hàng'}
+            {buttonText()}
           </button>
           <Link to="/cart" className="mt-2 block text-center text-sm text-gray-500 hover:text-orange-600">
             ← Sửa giỏ hàng
