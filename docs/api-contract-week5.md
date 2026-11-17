@@ -1,4 +1,4 @@
-# Kế hoạch và API contract tuần 5 — phần của Khang (bản đề xuất, chờ duyệt)
+# Kế hoạch và API contract tuần 5 — phần của Khang (đã duyệt 17/11)
 
 - Hạn tuần 5: **thứ Bảy 21/11/2026**. Xong MVP: 28/11.
 - Kế hoạch chung tuần 5: thanh toán, voucher, đánh giá, Android.
@@ -181,6 +181,29 @@ Test:
 - Đơn VNPay chưa trả tiền không hiện ở trang quán.
 - Thử thật trên sandbox bằng thẻ test NCB khi có mã TMN.
 
+### Kết quả Module I (đã làm, 17/11)
+
+Nhánh `feature/khang-tuan05-vnpay` tạo từ nhánh voucher (H), vì I sửa tiếp `OrderService` và `Checkout.tsx` của H. **Cần merge H trước rồi mới merge I.**
+
+Test: `VnPaySignerTest` (5 test, giá trị đối chiếu tính bằng `openssl`) và `VnPayPaymentIntegrationTest` (9 test, khóa giả, `querydr` được thay bằng mock). Chưa thử thật trên sandbox vì `.env` chưa có mã TMN.
+
+Những điểm chốt khi làm (khác hoặc chi tiết hơn bản kế hoạch):
+
+| Chỗ | Đã làm | Lý do |
+|---|---|---|
+| Khi nào tính là thành công | `vnp_ResponseCode = 00` **và** `vnp_TransactionStatus = 00` | Mẫu PHP của VNPay dùng "hoặc". Nhóm dùng "và" để chỉ giao món khi cả hai mã cùng xác nhận |
+| `POST /api/orders` trả gì | `CreateOrderResponse` = chi tiết đơn + `paymentUrl`, dùng `@JsonUnwrapped` | JSON giữ nguyên như cũ, chỉ thêm 1 trường; không phải sửa `OrderDetailResponse` mà test của Điệp đang dùng |
+| Quán thấy đơn nào | Đơn COD, hoặc đơn VNPay đã có giao dịch `SUCCESS` | Đơn VNPay hủy vì thanh toán lỗi cũng là đơn quán chưa từng nhận, nên không hiện (kể cả trang chi tiết) |
+| Khách quay về mà đơn còn chờ | Hỏi VNPay bằng `querydr`. Kết quả `00` + `00` → đã trả (có so số tiền); `00` + `01` → chờ tiếp; `00` + mã khác → thất bại; `91` (VNPay không có giao dịch) và URL quay về báo thất bại → hủy đơn; còn lại → không đổi gì | `91` nghĩa là chưa ai bị trừ tiền, nên hủy được. Các trường hợp không rõ thì giữ nguyên, chờ IPN |
+| `payments.created_at` | Ghi đúng `vnp_CreateDate` (giờ Việt Nam) | `querydr` cần gửi lại giá trị này ở `vnp_TransactionDate` |
+| Giỏ hàng | Đơn VNPay cũng xóa giỏ khi tạo đơn, giống COD | Món đã nằm trong đơn; thanh toán lỗi thì đơn bị hủy, khách đặt lại |
+| Đã nhận tiền nhưng đơn không còn chờ | Ghi giao dịch `SUCCESS`, không đổi đơn, ghi log cảnh báo + `TODO(khang)` hoàn tiền | Hoàn tiền làm ở tuần 6–7 |
+| Đơn chờ thanh toán quá lâu | Chưa tự hủy, khách cũng chưa tự hủy được: `TODO(khang)` tuần 6–7 | Kế hoạch đã dời việc này |
+| Lỗi 400 | Thêm `BadRequestException` vào `common` | URL quay về sai chữ ký phải trả 400 qua `GlobalExceptionHandler` |
+| `vnp_IpAddr` | `request.getRemoteAddr()` | Chạy trên máy có thể là `0:0:0:0:0:0:0:1`; tài liệu cho phép tới 45 ký tự. Khi thử sandbox cần để ý chỗ này |
+
+Còn phải làm khi có mã TMN: thử thật trên sandbox bằng thẻ NCB (thành công, khách bấm hủy), xem `querydr` trả gì với giao dịch bị hủy, và kiểm tra chữ ký phản hồi `querydr`. Tài liệu chỉ ghi thứ tự trường, còn trường bỏ trống thì nhóm đang để chuỗi rỗng.
+
 ## Không làm trong tuần 5 (đề xuất dời)
 
 | Việc | Lý do, thời điểm |
@@ -192,6 +215,8 @@ Test:
 | Phối hợp An cập nhật PR #18 theo `main` | E đã vào `main` (#21). #18 trùng API `PATCH /api/driver/orders/{id}/status`, cần bỏ 1 trong 2 trước khi merge |
 
 ## Cần bạn chốt
+
+Đã chốt 17/11: câu 2 chọn cách 1, câu 3 không trả lượt (ghi `TODO`), câu 4 nhờ Điệp thêm vào seed. Câu 1 còn chờ mã sandbox.
 
 1. **Đăng ký VNPay sandbox** tại https://pay.vnpaytest.vn/dev-registration (link lấy từ trang tài liệu chính thức), rồi tự điền `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET` vào file `.env`. Không gửi khóa qua chat, không commit.
 2. **Demo trên máy:** cách 1 (truy vấn VNPay khi khách quay về) hay cách 2 (tunnel và đăng ký IPN)?
