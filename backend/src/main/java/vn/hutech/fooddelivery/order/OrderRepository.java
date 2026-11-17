@@ -67,13 +67,16 @@ public class OrderRepository {
 
     // ----- Ghi don -----
 
-    /** Them 1 don trang thai PLACED, tra ve id. Trung ma don (cot code UNIQUE) thi nem DuplicateKeyException. */
+    /**
+     * Them 1 don (PLACED voi COD, PENDING_PAYMENT voi VNPay), tra ve id.
+     * Trung ma don (cot code UNIQUE) thi nem DuplicateKeyException.
+     */
     public long insertOrder(NewOrder order) {
         String sql = """
                 INSERT INTO orders (code, customer_id, restaurant_id, status,
                                     receiver_name, receiver_phone, delivery_address, delivery_lat, delivery_lng, note,
                                     subtotal, delivery_fee, discount_amount, total_amount, payment_method, distance_km)
-                VALUES (:code, :customerId, :restaurantId, 'PLACED',
+                VALUES (:code, :customerId, :restaurantId, :status,
                         :receiverName, :receiverPhone, :deliveryAddress, :deliveryLat, :deliveryLng, :note,
                         :subtotal, :deliveryFee, :discountAmount, :totalAmount, :paymentMethod, :distanceKm)
                 """;
@@ -81,6 +84,7 @@ public class OrderRepository {
                 .addValue("code", order.code())
                 .addValue("customerId", order.customerId())
                 .addValue("restaurantId", order.restaurantId())
+                .addValue("status", order.status())
                 .addValue("receiverName", order.receiverName())
                 .addValue("receiverPhone", order.receiverPhone())
                 .addValue("deliveryAddress", order.deliveryAddress())
@@ -177,6 +181,31 @@ public class OrderRepository {
                 rs.getString("vehicle_type"),
                 rs.getString("license_plate")
         )).stream().findFirst();
+    }
+
+    /**
+     * Doc vai cot cua don VA KHOA dong do den het transaction (SELECT ... FOR UPDATE).
+     * Luc tai xe nhan don (code cua An) cung ghi vao dong nay, nen 2 ben phai cho nhau, khong chen ngang:
+     * vd khach bam huy dung luc tai xe bam nhan thi 1 trong 2 phai doi ben kia xong roi doc lai.
+     * Chi khoa bang orders (khong JOIN) de khong khoa lan sang users, restaurants. (Y tuong tu PR #18 cua An.)
+     */
+    public Optional<LockedOrder> lockForUpdate(long orderId) {
+        String sql = """
+                SELECT id, customer_id, restaurant_id, driver_id, status
+                FROM orders WHERE id = :id
+                FOR UPDATE
+                """;
+        return jdbc.query(sql, Map.of("id", orderId), (rs, i) -> new LockedOrder(
+                rs.getLong("id"),
+                rs.getLong("customer_id"),
+                rs.getLong("restaurant_id"),
+                rs.getObject("driver_id", Long.class),
+                rs.getString("status")
+        )).stream().findFirst();
+    }
+
+    /** Vai cot cua don doc kem khoa dong (lockForUpdate). driverId null = chua co tai xe nhan. */
+    public record LockedOrder(long id, long customerId, long restaurantId, Long driverId, String status) {
     }
 
     /** id tai xe (bang drivers cua module An) ung voi tai khoan users.id; chua dang ky tai xe thi rong. */
@@ -290,6 +319,10 @@ public class OrderRepository {
                 WHERE m.owner_user_id = :ownerUserId
                   AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
                   AND (:status IS NULL OR o.status = :status)
+                  -- Quan chi thay don COD hoac don VNPay DA tra tien (don chua tra tien quan chua tung nhan)
+                  AND (o.payment_method = 'COD'
+                       OR EXISTS (SELECT 1 FROM payments p
+                                  WHERE p.order_id = o.id AND p.status IN ('SUCCESS', 'REFUNDED')))
                 ORDER BY o.created_at DESC, o.id DESC
                 LIMIT :limit OFFSET :offset
                 """;
@@ -311,6 +344,10 @@ public class OrderRepository {
                 WHERE m.owner_user_id = :ownerUserId
                   AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
                   AND (:status IS NULL OR o.status = :status)
+                  -- Quan chi thay don COD hoac don VNPay DA tra tien (don chua tra tien quan chua tung nhan)
+                  AND (o.payment_method = 'COD'
+                       OR EXISTS (SELECT 1 FROM payments p
+                                  WHERE p.order_id = o.id AND p.status IN ('SUCCESS', 'REFUNDED')))
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("ownerUserId", ownerUserId)
@@ -330,6 +367,19 @@ public class OrderRepository {
                 """;
         Long count = jdbc.queryForObject(sql, Map.of("restaurantId", restaurantId, "ownerUserId", ownerUserId),
                 Long.class);
+        return count != null && count > 0;
+    }
+
+    /** Cung dieu kien voi danh sach don cua quan: don COD, hoac don VNPay da tra tien. */
+    public boolean isVisibleToMerchant(long orderId) {
+        String sql = """
+                SELECT COUNT(*) FROM orders o
+                WHERE o.id = :orderId
+                  AND (o.payment_method = 'COD'
+                       OR EXISTS (SELECT 1 FROM payments p
+                                  WHERE p.order_id = o.id AND p.status IN ('SUCCESS', 'REFUNDED')))
+                """;
+        Long count = jdbc.queryForObject(sql, Map.of("orderId", orderId), Long.class);
         return count != null && count > 0;
     }
 
@@ -359,6 +409,10 @@ public class OrderRepository {
                 WHERE m.owner_user_id = :ownerUserId
                   AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
                   AND (:status IS NULL OR o.status = :status)
+                  -- Quan chi thay don COD hoac don VNPay DA tra tien (don chua tra tien quan chua tung nhan)
+                  AND (o.payment_method = 'COD'
+                       OR EXISTS (SELECT 1 FROM payments p
+                                  WHERE p.order_id = o.id AND p.status IN ('SUCCESS', 'REFUNDED')))
                 ORDER BY o.created_at DESC, o.id DESC
                 LIMIT :limit OFFSET :offset
                 """;

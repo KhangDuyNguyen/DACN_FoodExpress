@@ -61,8 +61,26 @@ public final class OrderPricing {
         BigDecimal subtotal = subtotal(lines);
         BigDecimal distance = distanceKm(restaurantLat, restaurantLng, deliveryLat, deliveryLng);
         BigDecimal fee = deliveryFee(distance, rule);
-        // TODO(khang): tru tien voucher (API cua Diep) o tuan sau, tuan 3 chua ap dung
-        BigDecimal discount = BigDecimal.ZERO;
-        return new PriceBreakdown(subtotal, fee, discount, total(subtotal, fee, discount), distance);
+        // Chua co voucher: giam 0. Voucher ap sau bang withVoucher(...)
+        return new PriceBreakdown(subtotal, fee, BigDecimal.ZERO, total(subtotal, fee, BigDecimal.ZERO), distance,
+                null, null, null);
+    }
+
+    /**
+     * Ap so tien giam cua voucher vao bang tien, tinh lai tong.
+     * So tien giam do VoucherService (Diep) tinh tu tam tinh va phi giao CUA SERVER, khong lay tu client.
+     */
+    public static PriceBreakdown withVoucher(PriceBreakdown price, BigDecimal discount,
+                                             String code, String title, String message) {
+        // Tien VND khong co so le (cot DECIMAL(12,0)); gia tri voucher luu DECIMAL(12,2) nen lam tron ve 0 so le
+        BigDecimal roundedDiscount = discount.setScale(0, RoundingMode.HALF_UP);
+        return new PriceBreakdown(price.subtotal(), price.deliveryFee(), roundedDiscount,
+                total(price.subtotal(), price.deliveryFee(), roundedDiscount), price.distanceKm(), code, title, message);
+    }
+
+    /** Khach nhap ma nhung ma khong dung duoc: giu nguyen tien, chi ghi ly do. */
+    public static PriceBreakdown voucherRejected(PriceBreakdown price, String reason) {
+        return new PriceBreakdown(price.subtotal(), price.deliveryFee(), price.discountAmount(), price.totalAmount(),
+                price.distanceKm(), null, null, reason);
     }
 }

@@ -227,6 +227,50 @@ class DriverFlowIntegrationTest {
         driverChanges(driver, orderId, "DELIVERED").andExpect(status().isOk());
     }
 
+    /** Quy tac lay tu PR #18 cua An: tai xe da nhan don thi khach va quan khong huy duoc nua. */
+    @Test
+    void nobodyCanCancelOnceDriverAccepted() throws Exception {
+        String customer = login("0911000001");
+        String merchant = login("0922000001");
+        String driver = login("0933000001");
+        long orderId = placeOrder(customer);
+        mockMvc.perform(post("/api/driver/offers/{id}/accept", offerIdOf(orderId)).header("Authorization", driver))
+                .andExpect(status().isOk());
+
+        // Don con "Cho xac nhan" (luat van cho khach huy) nhung da co tai xe nhan -> 409
+        mockMvc.perform(post("/api/orders/{id}/cancel", orderId).header("Authorization", customer)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Đổi ý\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Tài xế đã nhận giao đơn, chưa thể hủy đơn hàng"));
+
+        // Quan cung khong huy duoc, ke ca luc dang chuan bi
+        merchantChanges(merchant, orderId, "PREPARING").andExpect(status().isOk());
+        mockMvc.perform(patch("/api/merchant/orders/{id}/status", orderId).header("Authorization", merchant)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CANCELLED\",\"reason\":\"Hết món\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Tài xế đã nhận giao đơn, chưa thể hủy đơn hàng"));
+        assertEquals("PREPARING", jdbc.queryForObject(
+                "SELECT status FROM orders WHERE id = :id", Map.of("id", orderId), String.class));
+
+        // Don van giao tiep binh thuong (xong de giai phong tai xe cho test khac)
+        merchantChanges(merchant, orderId, "READY_FOR_PICKUP").andExpect(status().isOk());
+        driverChanges(driver, orderId, "DELIVERING").andExpect(status().isOk());
+        driverChanges(driver, orderId, "DELIVERED").andExpect(status().isOk());
+    }
+
+    @Test
+    void customerCanStillCancelWhileDriverIsOnlyInvited() throws Exception {
+        String customer = login("0911000001");
+        long orderId = placeOrder(customer);
+        offerIdOf(orderId); // da co loi moi (OFFERED) nhung chua tai xe nao nhan
+
+        mockMvc.perform(post("/api/orders/{id}/cancel", orderId).header("Authorization", customer)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Đổi ý\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
     @Test
     void failedOrderInvitesNobody() throws Exception {
         String customer = login("0911000002");
