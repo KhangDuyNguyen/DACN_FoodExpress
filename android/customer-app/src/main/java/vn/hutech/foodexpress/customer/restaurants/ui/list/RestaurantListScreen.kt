@@ -65,6 +65,7 @@ private val Orange = Color(0xFFFF6B35)
 @Composable
 fun RestaurantListScreen(
     onRestaurantClick: (Long) -> Unit,
+    onOrdersClick: () -> Unit = {},
     viewModel: RestaurantListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -86,6 +87,11 @@ fun RestaurantListScreen(
             TopAppBar(
                 title = {
                     Text("FoodExpress", fontWeight = FontWeight.Bold, color = Orange)
+                },
+                actions = {
+                    androidx.compose.material3.IconButton(onClick = onOrdersClick) {
+                        Text("🧾", fontSize = 20.sp)
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White),
             )

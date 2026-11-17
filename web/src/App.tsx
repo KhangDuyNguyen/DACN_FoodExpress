@@ -32,6 +32,7 @@ import MerchantRevenuePage from './pages/merchant/MerchantRevenuePage'
 import MerchantSupportPage from './pages/merchant/MerchantSupportPage'
 import MerchantTopDishesPage from './pages/merchant/MerchantTopDishesPage'
 import MerchantVouchersPage from './pages/merchant/MerchantVouchersPage'
+import MerchantReviewsPage from './pages/merchant/MerchantReviewsPage'
 // Tuần 4 - Dưỡng
 import BranchSelector from './pages/merchant/BranchSelector'
 import RestaurantSettings from './pages/merchant/RestaurantSettings'
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="merchant/revenue" element={<MerchantRevenuePage />} />
           <Route path="merchant/top-dishes" element={<MerchantTopDishesPage />} />
           <Route path="merchant/support" element={<MerchantSupportPage />} />
+          <Route path="merchant/reviews" element={<MerchantReviewsPage />} />
         </Route>
       </Route>
 
