@@ -122,7 +122,11 @@ export default function OrderTracking() {
           <p className="mt-3 text-xs text-gray-400">Trang tự cập nhật mỗi 10 giây.</p>
         )}
 
-        {order.status === 'PLACED' && (
+        {/* Tai xe da nhan don thi khong huy duoc nua (server cung chan, tra 409) */}
+        {order.status === 'PLACED' && order.driver && (
+          <p className="mt-3 text-xs text-gray-500">Tài xế đã nhận giao đơn nên không thể hủy.</p>
+        )}
+        {order.status === 'PLACED' && !order.driver && (
           <button
             onClick={handleCancel}
             disabled={cancelMutation.isPending}
