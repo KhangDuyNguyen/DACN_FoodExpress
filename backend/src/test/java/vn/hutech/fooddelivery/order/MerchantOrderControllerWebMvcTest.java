@@ -102,7 +102,8 @@ class MerchantOrderControllerWebMvcTest {
                             List.of(
                                     new OrderItemResponse(5L, "Cơm sườn nướng", BigDecimal.valueOf(25000), 2, "Không hành", BigDecimal.valueOf(50000))
                             ),
-                            LocalDateTime.of(2026, 11, 11, 20, 0)
+                            LocalDateTime.of(2026, 11, 11, 20, 0),
+                            null
                     );
                     if (status != null && !status.equals(order.status())) {
                         return List.of();
@@ -125,7 +126,7 @@ class MerchantOrderControllerWebMvcTest {
 
         @Bean
         OrderService orderService(OrderRepository orderRepository) {
-            return new OrderService(null, orderRepository);
+            return new OrderService(null, orderRepository, null);
         }
     }
 

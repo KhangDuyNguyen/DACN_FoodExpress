@@ -19,6 +19,7 @@ import java.util.Map;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -116,15 +117,23 @@ class OrderManagementIntegrationTest {
     // ----- Luong trang thai -----
 
     @Test
-    void merchantMovesOrderThroughAllSteps() throws Exception {
+    void merchantMovesOrderThroughAllStepsWhenNoDriver() throws Exception {
         String customer = login("0911000001");
         String merchant = login("0922000001");
+        // Test nay khong co tai xe online nao, nen don khong co tai xe va chu quan duoc bam ca buoc giao
         long orderId = placeOrder(customer, Q1, "Cơm sườn nướng");
 
         changeStatus(merchant, orderId, "{\"status\":\"PREPARING\"}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PREPARING"))
                 .andExpect(jsonPath("$.acceptedAt").value(notNullValue()));
+        // Tuan 4: phai bao "mon da xong" truoc khi giao
+        changeStatus(merchant, orderId, "{\"status\":\"DELIVERING\"}")
+                .andExpect(status().isConflict());
+        changeStatus(merchant, orderId, "{\"status\":\"READY_FOR_PICKUP\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("READY_FOR_PICKUP"))
+                .andExpect(jsonPath("$.driver").value(nullValue()));
         changeStatus(merchant, orderId, "{\"status\":\"DELIVERING\"}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("DELIVERING"));
@@ -132,11 +141,12 @@ class OrderManagementIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("DELIVERED"))
                 .andExpect(jsonPath("$.deliveredAt").value(notNullValue()))
-                .andExpect(jsonPath("$.history.length()").value(4))
+                .andExpect(jsonPath("$.history.length()").value(5))
                 .andExpect(jsonPath("$.history[0].status").value("PLACED"))
                 .andExpect(jsonPath("$.history[1].status").value("PREPARING"))
-                .andExpect(jsonPath("$.history[2].status").value("DELIVERING"))
-                .andExpect(jsonPath("$.history[3].status").value("DELIVERED"));
+                .andExpect(jsonPath("$.history[2].status").value("READY_FOR_PICKUP"))
+                .andExpect(jsonPath("$.history[3].status").value("DELIVERING"))
+                .andExpect(jsonPath("$.history[4].status").value("DELIVERED"));
 
         // Lich su ghi dung nguoi doi: buoc nhan don do chu quan 0922000001 bam
         assertEquals("0922000001", jdbc.queryForObject("""

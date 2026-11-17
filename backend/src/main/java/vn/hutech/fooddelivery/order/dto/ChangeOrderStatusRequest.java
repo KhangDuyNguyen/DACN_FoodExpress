@@ -10,8 +10,8 @@ import jakarta.validation.constraints.Size;
 /** Chu quan doi trang thai don. Huy don (CANCELLED) thi bat buoc co ly do. */
 public record ChangeOrderStatusRequest(
         @NotBlank(message = "Vui lòng chọn trạng thái mới")
-        @Pattern(regexp = "PREPARING|DELIVERING|DELIVERED|CANCELLED",
-                message = "Trạng thái chỉ được là PREPARING, DELIVERING, DELIVERED hoặc CANCELLED")
+        @Pattern(regexp = "PREPARING|READY_FOR_PICKUP|DELIVERING|DELIVERED|CANCELLED",
+                message = "Trạng thái chỉ được là PREPARING, READY_FOR_PICKUP, DELIVERING, DELIVERED hoặc CANCELLED")
         String status,
 
         @Size(max = 255, message = "Lý do tối đa 255 ký tự")

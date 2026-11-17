@@ -47,6 +47,7 @@ class OrderEventListenerTest {
                 "PLACED",
                 "Khách Hàng Test",
                 new OrderRestaurantResponse(15L, "Quán Cơm Tấm", "0912345678", "123 Đường Số 1"),
+                null, // driver: don moi chua co tai xe
                 "Người Nhận Test",
                 "0912345678",
                 "123 Đường Số 1",

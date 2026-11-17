@@ -39,10 +39,8 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final ApplicationEventPublisher eventPublisher;
 
-    public OrderService(CartRepository cartRepository, OrderRepository orderRepository) {
-        this(cartRepository, orderRepository, null);
-    }
-
+    // Chi 1 constructor: Spring tu dung no de tiem phu thuoc.
+    // (Co them constructor thu 2 thi Spring khong biet chon cai nao, app bao "No default constructor found".)
     public OrderService(CartRepository cartRepository,
                         OrderRepository orderRepository,
                         ApplicationEventPublisher eventPublisher) {
@@ -114,11 +112,11 @@ public class OrderService {
         // 5. Dat xong thi xoa gio (cart_items tu xoa theo nho ON DELETE CASCADE)
         cartRepository.deleteCart(cart.id());
 
+        // 6. Bao cho module khac co don moi: moi tai xe (OrderAssignmentListener),
+        //    day len dashboard cua hang qua WebSocket (OrderEventListener cua Diep).
+        //    Ben nghe dung AFTER_COMMIT nen chi chay khi ca transaction nay commit thanh cong.
         OrderDetailResponse response = getDetail(orderId);
-        if (eventPublisher != null) {
-            eventPublisher.publishEvent(new OrderPlacedEvent(orderId, restaurant.id(), response));
-        }
-
+        eventPublisher.publishEvent(new OrderPlacedEvent(orderId, restaurant.id(), response));
         return response;
     }
 

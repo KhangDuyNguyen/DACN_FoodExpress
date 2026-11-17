@@ -22,7 +22,8 @@ public record MerchantOrderSummaryResponse(
         String note,
         String paymentMethod,
         List<OrderItemResponse> items,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        String driverName // null khi chua co tai xe nhan (tuan 4, Module E)
 ) {
 }
 

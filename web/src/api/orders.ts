@@ -7,10 +7,11 @@ export type OrderStatus =
   | 'PENDING_PAYMENT' | 'PLACED' | 'ACCEPTED' | 'PREPARING' | 'READY_FOR_PICKUP'
   | 'PICKED_UP' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED' | 'REJECTED'
 
-// 5 trang thai dung trong tuan 3 (giong OrderStatusFlow o backend)
+// 6 trang thai dang dung (giong OrderStatusFlow o backend), tuan 4 them "Cho lay mon"
 export const ORDER_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
   PLACED: 'Chờ xác nhận',
   PREPARING: 'Đang chuẩn bị',
+  READY_FOR_PICKUP: 'Chờ lấy món',
   DELIVERING: 'Đang giao',
   DELIVERED: 'Hoàn thành',
   CANCELLED: 'Đã hủy',
@@ -35,6 +36,7 @@ export interface OrderSummary {
   itemCount: number
   receiverName: string
   deliveryAddress: string
+  driverName: string | null // null khi chua co tai xe nhan
   createdAt: string
 }
 
@@ -43,6 +45,14 @@ export interface MerchantOrderSummary extends OrderSummary {
   note: string | null
   paymentMethod: 'COD' | 'VNPAY' | 'MOMO'
   items: OrderItem[]
+}
+
+// Tai xe da nhan don (null khi chua co)
+export interface OrderDriver {
+  name: string
+  phone: string
+  vehicleType: 'MOTORBIKE' | 'BICYCLE' | 'CAR'
+  licensePlate: string | null
 }
 
 export interface PriceBreakdown {
@@ -74,6 +84,7 @@ export interface OrderDetail {
   status: OrderStatus
   customerName: string
   restaurant: { id: number; name: string; phone: string | null; address: string }
+  driver: OrderDriver | null
   receiverName: string
   receiverPhone: string
   deliveryAddress: string

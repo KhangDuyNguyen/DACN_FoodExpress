@@ -52,7 +52,8 @@ public class OrderEventListener {
                 order.note(),
                 order.paymentMethod(),
                 items,
-                order.createdAt()
+                order.createdAt(),
+                order.driver() != null ? order.driver().name() : null // don vua dat thuong chua co tai xe
         );
 
         String destination = "/topic/restaurants/" + event.restaurantId() + "/orders";
