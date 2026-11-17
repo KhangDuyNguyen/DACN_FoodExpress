@@ -40,6 +40,13 @@ export interface OrderSummary {
   createdAt: string
 }
 
+export interface MerchantOrderSummary extends OrderSummary {
+  receiverPhone: string
+  note: string | null
+  paymentMethod: 'COD' | 'VNPAY' | 'MOMO'
+  items: OrderItem[]
+}
+
 // Tai xe da nhan don (null khi chua co)
 export interface OrderDriver {
   name: string

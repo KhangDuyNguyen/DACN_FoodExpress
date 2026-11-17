@@ -81,4 +81,18 @@ public class RestaurantService {
     public List<MerchantRestaurantDTO> getRestaurantsOfOwner(long ownerUserId) {
         return restaurantRepository.findByOwnerUserId(ownerUserId);
     }
-}
+
+    /**
+     * Lấy chi tiết quán cho merchant (không lọc status - xem được quán PENDING/HIDDEN).
+     * Kiểm tra ownership bằng JOIN merchants → users.
+     */
+    @Transactional(readOnly = true)
+    public RestaurantDetailDTO getRestaurantByIdForMerchant(long restaurantId, long ownerUserId) {
+        // Kiểm tra ownership trước (tránh lộ quán của merchant khác)
+        long ownerCount = restaurantRepository.countByIdAndOwnerUserId(restaurantId, ownerUserId);
+        if (ownerCount == 0) throw new NotFoundException("Không tìm thấy quán với id: " + restaurantId);
+        return restaurantRepository.findByIdForMerchant(restaurantId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy quán với id: " + restaurantId));
+    }
+
+    }

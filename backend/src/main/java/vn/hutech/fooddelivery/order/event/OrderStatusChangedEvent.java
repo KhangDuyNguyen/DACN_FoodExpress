@@ -1,4 +1,4 @@
-package vn.hutech.fooddelivery.order;
+package vn.hutech.fooddelivery.order.event;
 
 /**
  * Su kien "don doi trang thai", phat ra moi lan doi (OrderManagementService), changedBy la users.id.

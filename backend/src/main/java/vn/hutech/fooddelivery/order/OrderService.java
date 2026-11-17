@@ -13,6 +13,7 @@ import vn.hutech.fooddelivery.order.dto.CreateOrderRequest;
 import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
 import vn.hutech.fooddelivery.order.dto.OrderPreviewRequest;
 import vn.hutech.fooddelivery.order.dto.PriceBreakdown;
+import vn.hutech.fooddelivery.order.event.OrderPlacedEvent;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -36,13 +37,16 @@ public class OrderService {
 
     private final CartRepository cartRepository;
     private final OrderRepository orderRepository;
-    private final ApplicationEventPublisher events;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public OrderService(CartRepository cartRepository, OrderRepository orderRepository,
-                        ApplicationEventPublisher events) {
+    // Chi 1 constructor: Spring tu dung no de tiem phu thuoc.
+    // (Co them constructor thu 2 thi Spring khong biet chon cai nao, app bao "No default constructor found".)
+    public OrderService(CartRepository cartRepository,
+                        OrderRepository orderRepository,
+                        ApplicationEventPublisher eventPublisher) {
         this.cartRepository = cartRepository;
         this.orderRepository = orderRepository;
-        this.events = events;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -108,11 +112,12 @@ public class OrderService {
         // 5. Dat xong thi xoa gio (cart_items tu xoa theo nho ON DELETE CASCADE)
         cartRepository.deleteCart(cart.id());
 
-        // 6. Bao cho module khac co don moi (moi tai xe, dashboard cua hang).
+        // 6. Bao cho module khac co don moi: moi tai xe (OrderAssignmentListener),
+        //    day len dashboard cua hang qua WebSocket (OrderEventListener cua Diep).
         //    Ben nghe dung AFTER_COMMIT nen chi chay khi ca transaction nay commit thanh cong.
-        events.publishEvent(new OrderPlacedEvent(orderId, restaurant.id(), userId));
-
-        return getDetail(orderId);
+        OrderDetailResponse response = getDetail(orderId);
+        eventPublisher.publishEvent(new OrderPlacedEvent(orderId, restaurant.id(), response));
+        return response;
     }
 
     /** Chi tiet don theo id (Module D dung lai, kem kiem tra chu don). */

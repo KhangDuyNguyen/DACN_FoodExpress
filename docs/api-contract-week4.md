@@ -1,4 +1,4 @@
-# Kế hoạch và API contract tuần 4 — phần của Khang (bản đề xuất, chờ duyệt)
+# Kế hoạch và API contract tuần 4 — phần của Khang (đã duyệt, đã làm G và E)
 
 Kế hoạch chung của nhóm (từ tuần 4):
 
@@ -19,22 +19,25 @@ Trong tuần 4, cửa hàng/chi nhánh và quản lý menu do Dưỡng làm (PR 
 
 ## Module E. Nối đơn hàng với luồng tài xế (phối hợp An, Điệp)
 
-**Phụ thuộc:** PR #13, #14 (đơn hàng) và #17 (gán tài xế của An) đã merge.
+> Đã làm (nhánh `feature/week4-driver-flow`). Nhánh đã gộp `main` ngày 17/11 (có PR #14, #15, #17, #19) và chứa luôn Module G (`feature/week4-address-map`, chưa vào `main`). Code ở package `order` và `order.event`.
 
-### E1. Sự kiện đơn hàng
-
-Phát 2 sự kiện Spring (`ApplicationEventPublisher`) trong package `order`:
+### E1. Sự kiện đơn hàng (package `order.event`)
 
 | Sự kiện | Khi nào | Dữ liệu |
 |---|---|---|
-| `OrderPlacedEvent` | Đặt hàng thành công | `orderId, restaurantId, customerId` |
-| `OrderStatusChangedEvent` | Mỗi lần đổi trạng thái | `orderId, restaurantId, customerId, fromStatus, toStatus, changedBy` |
+| `OrderPlacedEvent` (Điệp tạo ở PR #19, dùng chung) | Đặt hàng thành công | `orderId, restaurantId, order` (`OrderDetailResponse`) |
+| `OrderStatusChangedEvent` | Mỗi lần đổi trạng thái (quán, khách hoặc tài xế) | `orderId, restaurantId, customerId, fromStatus, toStatus, changedBy` |
 
-Bên nghe dùng `@TransactionalEventListener(phase = AFTER_COMMIT)`: chỉ chạy khi đơn đã thật sự lưu xong. Điệp (WebSocket dashboard) và An (thông báo) tự viết listener ở package của mình, không cần sửa code đơn hàng.
+- Sự kiện phát trong transaction. Bên nghe dùng `@TransactionalEventListener(phase = AFTER_COMMIT)`, nên chỉ chạy khi đơn đã thật sự lưu xong.
+- Bên nghe hiện có:
+  - `OrderEventListener` (Điệp): đẩy đơn mới lên `/topic/restaurants/{id}/orders`.
+  - `OrderAssignmentListener` (Khang): mời tài xế.
+- An (thông báo, thu nhập tài xế khi `DELIVERED`) tự viết listener ở package của mình, không cần sửa code đơn hàng.
+- Bản đề xuất có `OrderPlacedEvent(orderId, restaurantId, customerId)` riêng. Khi gộp `main` đã bỏ bản này, dùng chung sự kiện của Điệp, để mỗi lần đặt hàng chỉ phát 1 sự kiện.
 
 ### E2. Đặt xong là mời tài xế ngay
 
-`OrderAssignmentListener` nghe `OrderPlacedEvent` rồi gọi `AssignmentService.createOffer(orderId)` của An. Tài xế gần nhất nhận lời mời ngay, không phải chờ bộ quét 30 giây.
+`OrderAssignmentListener` nghe `OrderPlacedEvent` rồi gọi `AssignmentService.createOffer(orderId)` của An. Tài xế gần nhất nhận lời mời ngay, không phải chờ bộ quét 30 giây. Phần gán tài xế có lỗi thì chỉ ghi log: đơn đã lưu, khách vẫn nhận 201.
 
 ### E3. Trạng thái đơn khi có tài xế
 
@@ -42,21 +45,61 @@ Bên nghe dùng `@TransactionalEventListener(phase = AFTER_COMMIT)`: chỉ chạ
 |---|---|---|
 | `PLACED` | `PREPARING` | Chủ quán (nhận đơn) |
 | `PREPARING` | `READY_FOR_PICKUP` | Chủ quán (món đã xong) — **mới** |
-| `READY_FOR_PICKUP` | `DELIVERING` | Tài xế được gán (đã lấy món, đang giao) — **mới** |
-| `DELIVERING` | `DELIVERED` | Tài xế được gán (đã giao) — **mới** |
+| `READY_FOR_PICKUP` | `DELIVERING` | Tài xế được gán (đã lấy món); đơn chưa có tài xế thì chủ quán |
+| `DELIVERING` | `DELIVERED` | Tài xế được gán (đã giao); đơn chưa có tài xế thì chủ quán |
 | `PLACED`, `PREPARING` | `CANCELLED` | Như tuần 3 (khách chỉ hủy được khi `PLACED`) |
 
-- Đơn **chưa có tài xế** (`driver_id` rỗng): chủ quán vẫn bấm được "Bắt đầu giao", "Hoàn thành" như tuần 3, để demo được khi không có tài xế online.
-- Thêm hàm `OrderManagementService.changeStatusByDriver(driverUserId, orderId, toStatus)` có kiểm tra `orders.driver_id` đúng là tài xế đó. API của An (`/api/driver/orders/...`) gọi hàm này, để mọi luật đổi trạng thái vẫn nằm một chỗ trong `OrderStatusFlow`.
-- Web: nút "Món đã xong" ở màn nhận đơn của cửa hàng; trang theo dõi đơn của khách hiện thêm bước "Chờ tài xế lấy món" và tên tài xế.
+Luật nằm một chỗ trong `OrderStatusFlow.canChange(actor, from, to, hasDriver)`:
+- Đơn **chưa có tài xế** (`driver_id` rỗng): chủ quán tự bấm "Bắt đầu giao", "Hoàn thành", để demo được khi không có tài xế online.
+- Đơn **đã có tài xế**: 2 bước giao hàng chỉ tài xế đó bấm. Chủ quán bấm → 409 "Đơn đã có tài xế nhận, bước giao hàng do tài xế cập nhật".
 
-**Cần chốt với An:** code của An chỉ mời tài xế khi đơn còn `PLACED` (`assignOrder ... WHERE status = 'PLACED'`), và hủy lời mời ngay khi đơn rời `PLACED`. Nếu quán nhận đơn trước khi có tài xế nhận, đơn sẽ không bao giờ có tài xế. Đề xuất An cho mời khi đơn ở `PLACED`, `PREPARING` hoặc `READY_FOR_PICKUP` mà chưa có `driver_id`.
+API mới cho app tài xế (đặt ở package `order` để mọi luật đổi trạng thái vẫn do `OrderManagementService` xử lý):
+
+| Method | URL | Ghi chú |
+|---|---|---|
+| PATCH | `/api/driver/orders/{id}/status` | Vai trò DRIVER. Body `{ "status": "DELIVERING" }` hoặc `"DELIVERED"` → 200 + chi tiết đơn |
+
+Lỗi của API trên:
+- 400: `status` khác 2 giá trị trên.
+- 403: đơn không phải của tài xế đang đăng nhập.
+- 409: sai bước, ví dụ món chưa xong (`PREPARING`) mà báo đang giao.
+
+Dữ liệu trả về thêm:
+- `OrderDetailResponse.driver`: `{ name, phone, vehicleType, licensePlate }`, hoặc `null` khi chưa có tài xế.
+- `OrderSummaryResponse.driverName` và `MerchantOrderSummaryResponse.driverName`: tên tài xế hoặc `null`.
+- Tham số `?status=` nhận thêm `READY_FOR_PICKUP`.
+
+Web:
+- Trang theo dõi đơn của khách:
+  - Thanh tiến trình 5 bước (thêm "Chờ lấy món").
+  - Thẻ tài xế: tên, SĐT, loại xe, biển số. Chưa có tài xế thì hiện "Chưa có tài xế nhận", quán tự giao thì "Quán tự giao".
+- Trang đơn của cửa hàng (bản realtime của Điệp):
+  - Tab "Chờ lấy món", nút "Món đã xong".
+  - Cột "Tài xế"; chi tiết đơn có thông tin tài xế.
+  - Đơn đã có tài xế thì ẩn nút "Bắt đầu giao"/"Hoàn thành", hiện "Tài xế cập nhật".
+
+Sửa thêm khi gộp `main` (PR #19 của Điệp có sửa package `order`):
+- `OrderService` trên `main` có 2 constructor nên Spring báo `No default constructor found`, backend không khởi động được. Nhánh E giữ 1 constructor 3 tham số.
+- Để khớp, có sửa 3 chỗ nhỏ trong code của Điệp ở package `order`:
+  - `MerchantOrderControllerWebMvcTest`: `new OrderService(null, orderRepository, null)`; thêm `null` cho `driverName`.
+  - `OrderEventListener`: truyền tên tài xế (đơn mới thường là `null`).
+  - `OrderEventListenerTest`: thêm `null` cho `driver`.
+
+**Cần chốt với An:**
+- Code của An chỉ mời tài xế khi đơn còn `PLACED` (`assignOrder ... WHERE status = 'PLACED'`), và hủy lời mời ngay khi đơn rời `PLACED`. Nếu quán nhận đơn trước khi có tài xế nhận, đơn sẽ không bao giờ có tài xế (quán phải tự giao). Đề xuất An cho mời khi đơn ở `PLACED`, `PREPARING` hoặc `READY_FOR_PICKUP` mà chưa có `driver_id`.
+- Bộ quét định kỳ chỉ chạy khi bật `app.assignment.scheduling.enabled=true`, nhưng `application.yml` chưa bật. Khi đó lời mời hết hạn không được dọn, và tài xế bỏ qua lời mời bị coi là đang bận.
+- App tài xế gọi `PATCH /api/driver/orders/{id}/status` ở trên để báo đã lấy món / đã giao.
 
 ### E4. Test
 
-- Đặt hàng xong có lời mời tài xế trong `order_assignments` (có tài xế online gần quán).
-- Tài xế được gán đi `READY_FOR_PICKUP → DELIVERING → DELIVERED`; tài xế khác hoặc chủ quán (khi đơn đã có tài xế) → 403/409.
-- Sự kiện chỉ phát sau khi transaction commit (đặt hàng lỗi giữa chừng thì không có lời mời).
+- `DriverFlowIntegrationTest` (4 test):
+  - Đặt hàng xong có ngay lời mời trong `order_assignments` cho tài xế online gần quán.
+  - Tài xế nhận lời mời rồi đi `READY_FOR_PICKUP → DELIVERING → DELIVERED`; chủ quán bấm bước giao → 409; lịch sử ghi đúng tài xế; khách thấy tên tài xế.
+  - Tài xế khác → 403; món chưa xong mà tài xế báo đang giao → 409; trạng thái sai → 400.
+  - Đặt hàng lỗi (dưới đơn tối thiểu) → không có đơn, không mời ai.
+- `OrderPlacedEventTest`: phần gán tài xế ném lỗi thì đặt hàng vẫn 201, đơn vẫn `PLACED`.
+- `OrderStatusFlowTest` (6 test): bảng chuyển trạng thái của từng vai trò, có và không có tài xế.
+- `OrderManagementIntegrationTest`: chủ quán tự đi đủ 5 bước khi đơn chưa có tài xế.
 
 ## Module G. Sổ địa chỉ có bản đồ
 

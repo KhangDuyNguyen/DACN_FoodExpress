@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { OrderDetail, OrderStatus, OrderSummary } from './orders'
+import type { MerchantOrderSummary, OrderDetail, OrderStatus } from './orders'
 import type { PageResponse } from './page'
 
 // API cho chu quan (backend: /api/merchant/restaurants, /api/merchant/orders)
@@ -24,8 +24,8 @@ export async function fetchMyRestaurants(): Promise<MerchantRestaurant[]> {
   return res.data
 }
 
-export async function fetchMerchantOrders(params: MerchantOrderParams): Promise<PageResponse<OrderSummary>> {
-  const res = await api.get<PageResponse<OrderSummary>>('/merchant/orders', { params })
+export async function fetchMerchantOrders(params: MerchantOrderParams): Promise<PageResponse<MerchantOrderSummary>> {
+  const res = await api.get<PageResponse<MerchantOrderSummary>>('/merchant/orders', { params })
   return res.data
 }
 
