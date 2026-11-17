@@ -39,10 +39,8 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final ApplicationEventPublisher eventPublisher;
 
-    public OrderService(CartRepository cartRepository, OrderRepository orderRepository) {
-        this(cartRepository, orderRepository, null);
-    }
-
+    // Chi 1 constructor: Spring tu dung no de tiem phu thuoc.
+    // (Co them constructor thu 2 thi Spring khong biet chon cai nao, app bao "No default constructor found".)
     public OrderService(CartRepository cartRepository,
                         OrderRepository orderRepository,
                         ApplicationEventPublisher eventPublisher) {
