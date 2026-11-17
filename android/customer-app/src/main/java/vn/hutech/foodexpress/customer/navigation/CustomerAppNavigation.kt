@@ -6,11 +6,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import vn.hutech.foodexpress.customer.orders.ui.MyOrdersScreen
 import vn.hutech.foodexpress.customer.restaurants.ui.detail.RestaurantDetailScreen
 import vn.hutech.foodexpress.customer.restaurants.ui.list.RestaurantListScreen
 
-private const val RESTAURANT_LIST_ROUTE = "restaurants"
+private const val RESTAURANT_LIST_ROUTE  = "restaurants"
 private const val RESTAURANT_DETAIL_ROUTE = "restaurants/{restaurantId}"
+private const val MY_ORDERS_ROUTE        = "orders"
 
 @Composable
 fun CustomerAppNavigation() {
@@ -26,17 +28,25 @@ fun CustomerAppNavigation() {
                 onRestaurantClick = { restaurantId ->
                     navController.navigate("restaurants/$restaurantId")
                 },
+                onOrdersClick = {
+                    navController.navigate(MY_ORDERS_ROUTE)
+                },
             )
         }
 
         // Màn 2: Chi tiết quán + menu
         composable(
             route = RESTAURANT_DETAIL_ROUTE,
-            arguments = listOf(
-                navArgument("restaurantId") { type = NavType.LongType }
-            ),
+            arguments = listOf(navArgument("restaurantId") { type = NavType.LongType }),
         ) {
             RestaurantDetailScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        // Màn 3: Lịch sử đơn + đánh giá
+        composable(MY_ORDERS_ROUTE) {
+            MyOrdersScreen(
                 onBack = { navController.popBackStack() },
             )
         }

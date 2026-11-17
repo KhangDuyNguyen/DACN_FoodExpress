@@ -29,6 +29,7 @@ import {
   BranchesOutlined,
   UnorderedListOutlined,
   SettingOutlined,
+  StarOutlined,
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
@@ -54,6 +55,7 @@ export const MerchantLayout: React.FC = () => {
     if (path.startsWith('/merchant/menu')) return '/merchant/menu'
     if (path.startsWith('/merchant/settings')) return '/merchant/settings'
     if (path.startsWith('/merchant/branch')) return '/merchant/branch'
+    if (path.startsWith('/merchant/reviews')) return '/merchant/reviews'
     return '/merchant'
   }
 
@@ -111,6 +113,12 @@ export const MerchantLayout: React.FC = () => {
       icon: <FireOutlined />,
       label: 'Món bán chạy',
       onClick: () => navigate('/merchant/top-dishes'),
+    },
+    {
+      key: '/merchant/reviews',
+      icon: <StarOutlined />,
+      label: 'Đánh giá',
+      onClick: () => navigate('/merchant/reviews'),
     },
     {
       key: '/merchant/support',

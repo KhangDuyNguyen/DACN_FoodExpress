@@ -70,3 +70,28 @@
 | Tuần 5 | 14/11 | ✅ Hoàn thành |
 | Tuần 6 | 21/11 | ⏳ Chưa bắt đầu |
 | Tuần 7 | 28/11 | ⏳ Chưa bắt đầu |
+
+## ✅ TUẦN 6 (16-21/11/2026) - HOÀN THÀNH 100%
+
+### Backend - Review APIs
+- `POST /api/orders/{id}/review` - Khách đánh giá (validate đơn DELIVERED, unique per order)
+- `GET /api/orders/{id}/review` - Khách xem lại đánh giá của mình
+- `GET /api/restaurants/{id}/reviews` - Danh sách đánh giá của quán (public)
+- `GET /api/merchant/restaurants/{id}/reviews` - Merchant xem đánh giá quán mình
+- `POST /api/merchant/reviews/{id}/reply` - Merchant trả lời đánh giá
+- Tính lại `avg_rating` + `rating_count` tự động sau khi tạo review
+
+### Web khách
+- `MyOrders.tsx`: thêm nút ⭐ Đánh giá cho đơn DELIVERED
+- Modal đánh giá: rating 1-5 sao (quán + tài xế), nhận xét tùy chọn
+- Hiển thị review cũ + phản hồi từ quán nếu đã review
+
+### Dashboard cửa hàng
+- `MerchantReviewsPage` (`/merchant/reviews`): xem đánh giá, thống kê avg/replied/unReplied
+- Nút 💬 Trả lời cho review chưa có phản hồi
+- Sidebar thêm link ⭐ Đánh giá
+
+### App khách Android
+- Màn `MyOrdersScreen`: danh sách đơn hàng, nút ⭐ Đánh giá cho đơn DELIVERED
+- `ReviewDialog`: form đánh giá sao, nhận xét, xem review cũ + phản hồi
+- Nút 🧾 trên TopAppBar để vào lịch sử đơn từ màn danh sách quán
