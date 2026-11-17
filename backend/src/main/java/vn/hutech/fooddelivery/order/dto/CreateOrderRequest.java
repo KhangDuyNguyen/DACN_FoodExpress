@@ -41,9 +41,10 @@ public record CreateOrderRequest(
         @Size(max = 30, message = "Mã voucher tối đa 30 ký tự")
         String voucherCode,
 
-        // TODO(khang): VNPAY, MOMO lam o phan thanh toan (tuan sau)
+        // COD: tra khi nhan hang. VNPAY: tra truoc qua VNPay (tuan 5).
+        // TODO(khang): MOMO lam sau VNPay (tuan 6), dung chung bang payments
         @NotBlank(message = "Vui lòng chọn cách thanh toán")
-        @Pattern(regexp = "COD", message = "Hiện chỉ hỗ trợ thanh toán khi nhận hàng (COD)")
+        @Pattern(regexp = "COD|VNPAY", message = "Chỉ hỗ trợ thanh toán khi nhận hàng (COD) hoặc VNPay")
         String paymentMethod
 ) {
 }

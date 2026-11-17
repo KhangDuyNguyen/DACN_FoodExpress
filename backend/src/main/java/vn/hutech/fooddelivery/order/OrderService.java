@@ -10,10 +10,12 @@ import vn.hutech.fooddelivery.cart.CartRow;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.NotFoundException;
 import vn.hutech.fooddelivery.order.dto.CreateOrderRequest;
+import vn.hutech.fooddelivery.order.dto.CreateOrderResponse;
 import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
 import vn.hutech.fooddelivery.order.dto.OrderPreviewRequest;
 import vn.hutech.fooddelivery.order.dto.PriceBreakdown;
 import vn.hutech.fooddelivery.order.event.OrderPlacedEvent;
+import vn.hutech.fooddelivery.payment.VnPayService;
 import vn.hutech.fooddelivery.promotion.VoucherService;
 import vn.hutech.fooddelivery.promotion.dto.VoucherValidateRequest;
 import vn.hutech.fooddelivery.promotion.dto.VoucherValidateResponse;
@@ -43,17 +45,21 @@ public class OrderService {
     private final ApplicationEventPublisher eventPublisher;
     /** Voucher cua Diep (package promotion): chi goi ham, khong ghi thang bang voucher. */
     private final VoucherService voucherService;
+    /** Tao giao dich va URL thanh toan VNPay (package payment). */
+    private final VnPayService vnPayService;
 
     // Chi 1 constructor: Spring tu dung no de tiem phu thuoc.
     // (Co them constructor thu 2 thi Spring khong biet chon cai nao, app bao "No default constructor found".)
     public OrderService(CartRepository cartRepository,
                         OrderRepository orderRepository,
                         ApplicationEventPublisher eventPublisher,
-                        VoucherService voucherService) {
+                        VoucherService voucherService,
+                        VnPayService vnPayService) {
         this.cartRepository = cartRepository;
         this.orderRepository = orderRepository;
         this.eventPublisher = eventPublisher;
         this.voucherService = voucherService;
+        this.vnPayService = vnPayService;
     }
 
     /**
@@ -86,9 +92,11 @@ public class OrderService {
     /**
      * Dat hang tu gio cua khach. Tat ca nam trong MOT transaction:
      * loi o bat ky buoc nao thi rollback het (khong co don "nua voi", gio con nguyen).
+     *
+     * @param clientIp IP cua khach, VNPay yeu cau gui kem (vnp_IpAddr)
      */
     @Transactional
-    public OrderDetailResponse createOrder(long userId, CreateOrderRequest req) {
+    public CreateOrderResponse createOrder(long userId, CreateOrderRequest req, String clientIp) {
         // 1. Khoa dong gio den het transaction. Bam "Dat hang" 2 lan thi lan 2 phai cho lan 1 xong;
         //    luc do gio da bi xoa nen lan 2 nhan 409, khong tao ra 2 don.
         CartRow cart = cartRepository.findByUserIdForUpdate(userId)
@@ -129,12 +137,15 @@ public class OrderService {
                     voucher.message());
         }
 
-        // 5. Ghi don, tung mon, lich su trang thai
-        long orderId = insertOrderWithNewCode(userId, restaurant.id(), req, price);
+        // 5. Ghi don, tung mon, lich su trang thai.
+        //    COD: quan xac nhan duoc ngay (PLACED). VNPay: cho khach tra tien (PENDING_PAYMENT), quan chua thay don.
+        boolean payByVnPay = "VNPAY".equals(req.paymentMethod());
+        String status = payByVnPay ? "PENDING_PAYMENT" : "PLACED";
+        long orderId = insertOrderWithNewCode(userId, restaurant.id(), req, price, status);
         for (CartLine line : lines) {
             orderRepository.insertOrderItem(orderId, line);
         }
-        orderRepository.insertStatusHistory(orderId, "PLACED", userId, null);
+        orderRepository.insertStatusHistory(orderId, status, userId, null);
 
         // 6. Ghi luot dung voucher bang ham cua Diep (tang used_count co dieu kien + ghi voucher_usages).
         //    Can orderId nen phai sau buoc 5. Het luot giua chung -> 409, CA DON rollback (cung transaction).
@@ -142,15 +153,24 @@ public class OrderService {
             voucherService.recordVoucherUsage(voucher.voucherId(), userId, orderId);
         }
 
-        // 7. Dat xong thi xoa gio (cart_items tu xoa theo nho ON DELETE CASCADE)
+        // 7. Dat xong thi xoa gio (cart_items tu xoa theo nho ON DELETE CASCADE). Don VNPay cung xoa:
+        //    mon da nam trong don; thanh toan that bai thi don bi huy, khach dat lai.
         cartRepository.deleteCart(cart.id());
+        OrderDetailResponse order = getDetail(orderId);
 
-        // 8. Bao cho module khac co don moi: moi tai xe (OrderAssignmentListener),
+        // 8. VNPay: ghi giao dich PENDING va tao URL thanh toan (cung transaction nay).
+        //    Khi VNPay bao da tra tien (IPN hoac truy van luc khach quay ve), PaymentResultService
+        //    moi chuyen don sang PLACED va bao quan, moi tai xe.
+        if (payByVnPay) {
+            String paymentUrl = vnPayService.createPayment(orderId, order.code(), order.totalAmount(), clientIp);
+            return new CreateOrderResponse(order, paymentUrl);
+        }
+
+        // 9. COD: bao cho module khac co don moi ngay: moi tai xe (OrderAssignmentListener),
         //    day len dashboard cua hang qua WebSocket (OrderEventListener cua Diep).
         //    Ben nghe dung AFTER_COMMIT nen chi chay khi ca transaction nay commit thanh cong.
-        OrderDetailResponse response = getDetail(orderId);
-        eventPublisher.publishEvent(new OrderPlacedEvent(orderId, restaurant.id(), response));
-        return response;
+        eventPublisher.publishEvent(new OrderPlacedEvent(orderId, restaurant.id(), order));
+        return new CreateOrderResponse(order, null);
     }
 
     /** Chi tiet don theo id (Module D dung lai, kem kiem tra chu don). */
@@ -164,7 +184,8 @@ public class OrderService {
      * Ma don = "FD" + ngay (yyMMdd) + 6 so ngau nhien, vi du FD261107042195.
      * Rat hiem khi trung; neu trung thi cot code UNIQUE bao loi, sinh ma khac va thu lai (toi da 3 lan).
      */
-    private long insertOrderWithNewCode(long userId, long restaurantId, CreateOrderRequest req, PriceBreakdown price) {
+    private long insertOrderWithNewCode(long userId, long restaurantId, CreateOrderRequest req, PriceBreakdown price,
+                                        String status) {
         for (int attempt = 1; ; attempt++) {
             String code = "FD" + LocalDate.now(VIETNAM).format(CODE_DATE)
                     + String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000));
@@ -172,7 +193,7 @@ public class OrderService {
                     req.receiverName().trim(), req.receiverPhone(), req.deliveryAddress().trim(),
                     req.deliveryLat(), req.deliveryLng(), cleanNote(req.note()),
                     price.subtotal(), price.deliveryFee(), price.discountAmount(), price.totalAmount(),
-                    req.paymentMethod(), price.distanceKm());
+                    req.paymentMethod(), price.distanceKm(), status);
             try {
                 return orderRepository.insertOrder(order);
             } catch (DuplicateKeyException ex) {

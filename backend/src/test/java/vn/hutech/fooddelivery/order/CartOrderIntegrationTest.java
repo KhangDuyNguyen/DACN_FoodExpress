@@ -389,7 +389,7 @@ class CartOrderIntegrationTest {
         String token = login("0911000002");
         String body = """
                 {"receiverName":"","receiverPhone":"123","deliveryAddress":"Quận 1",
-                 "deliveryLat":10.78,"deliveryLng":106.70,"paymentMethod":"VNPAY"}
+                 "deliveryLat":10.78,"deliveryLng":106.70,"paymentMethod":"MOMO"}
                 """;
         mockMvc.perform(post("/api/orders").header("Authorization", token)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
