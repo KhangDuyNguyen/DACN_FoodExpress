@@ -126,7 +126,7 @@ class MerchantOrderControllerWebMvcTest {
 
         @Bean
         OrderService orderService(OrderRepository orderRepository) {
-            return new OrderService(null, orderRepository, null);
+            return new OrderService(null, orderRepository, null, null);
         }
     }
 
