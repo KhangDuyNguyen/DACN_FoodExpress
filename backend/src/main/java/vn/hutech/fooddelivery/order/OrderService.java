@@ -14,6 +14,9 @@ import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
 import vn.hutech.fooddelivery.order.dto.OrderPreviewRequest;
 import vn.hutech.fooddelivery.order.dto.PriceBreakdown;
 import vn.hutech.fooddelivery.order.event.OrderPlacedEvent;
+import vn.hutech.fooddelivery.promotion.VoucherService;
+import vn.hutech.fooddelivery.promotion.dto.VoucherValidateRequest;
+import vn.hutech.fooddelivery.promotion.dto.VoucherValidateResponse;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -38,15 +41,19 @@ public class OrderService {
     private final CartRepository cartRepository;
     private final OrderRepository orderRepository;
     private final ApplicationEventPublisher eventPublisher;
+    /** Voucher cua Diep (package promotion): chi goi ham, khong ghi thang bang voucher. */
+    private final VoucherService voucherService;
 
     // Chi 1 constructor: Spring tu dung no de tiem phu thuoc.
     // (Co them constructor thu 2 thi Spring khong biet chon cai nao, app bao "No default constructor found".)
     public OrderService(CartRepository cartRepository,
                         OrderRepository orderRepository,
-                        ApplicationEventPublisher eventPublisher) {
+                        ApplicationEventPublisher eventPublisher,
+                        VoucherService voucherService) {
         this.cartRepository = cartRepository;
         this.orderRepository = orderRepository;
         this.eventPublisher = eventPublisher;
+        this.voucherService = voucherService;
     }
 
     /**
@@ -65,6 +72,14 @@ public class OrderService {
         PriceBreakdown price = OrderPricing.calculate(lines, restaurant.lat(), restaurant.lng(),
                 req.deliveryLat(), req.deliveryLng(), findFeeRule());
         checkDistance(price);
+        // Khach nhap ma: xem truoc so tien giam. Ma khong dung duoc van tra 200, kem ly do de trang thanh toan hien
+        if (hasText(req.voucherCode())) {
+            VoucherValidateResponse voucher = checkVoucher(userId, restaurant.id(), price, req.voucherCode());
+            price = voucher.valid()
+                    ? OrderPricing.withVoucher(price, voucher.discountAmount(), voucher.code(), voucher.title(),
+                            voucher.message())
+                    : OrderPricing.voucherRejected(price, voucher.message());
+        }
         return price;
     }
 
@@ -102,17 +117,35 @@ public class OrderService {
             throw new ConflictException("Đơn tối thiểu của quán là " + formatVnd(restaurant.minOrderAmount()));
         }
 
-        // 4. Ghi don, tung mon, lich su trang thai
+        // 4. Voucher (neu co): kiem tra lai ngay luc dat (ma co the vua het han/het luot sau khi xem truoc).
+        //    Khong dung duoc -> 409 kem ly do, khong tao don, gio giu nguyen.
+        VoucherValidateResponse voucher = null;
+        if (hasText(req.voucherCode())) {
+            voucher = checkVoucher(userId, restaurant.id(), price, req.voucherCode());
+            if (!voucher.valid()) {
+                throw new ConflictException(voucher.message());
+            }
+            price = OrderPricing.withVoucher(price, voucher.discountAmount(), voucher.code(), voucher.title(),
+                    voucher.message());
+        }
+
+        // 5. Ghi don, tung mon, lich su trang thai
         long orderId = insertOrderWithNewCode(userId, restaurant.id(), req, price);
         for (CartLine line : lines) {
             orderRepository.insertOrderItem(orderId, line);
         }
         orderRepository.insertStatusHistory(orderId, "PLACED", userId, null);
 
-        // 5. Dat xong thi xoa gio (cart_items tu xoa theo nho ON DELETE CASCADE)
+        // 6. Ghi luot dung voucher bang ham cua Diep (tang used_count co dieu kien + ghi voucher_usages).
+        //    Can orderId nen phai sau buoc 5. Het luot giua chung -> 409, CA DON rollback (cung transaction).
+        if (voucher != null) {
+            voucherService.recordVoucherUsage(voucher.voucherId(), userId, orderId);
+        }
+
+        // 7. Dat xong thi xoa gio (cart_items tu xoa theo nho ON DELETE CASCADE)
         cartRepository.deleteCart(cart.id());
 
-        // 6. Bao cho module khac co don moi: moi tai xe (OrderAssignmentListener),
+        // 8. Bao cho module khac co don moi: moi tai xe (OrderAssignmentListener),
         //    day len dashboard cua hang qua WebSocket (OrderEventListener cua Diep).
         //    Ben nghe dung AFTER_COMMIT nen chi chay khi ca transaction nay commit thanh cong.
         OrderDetailResponse response = getDetail(orderId);
@@ -164,6 +197,19 @@ public class OrderService {
         if (price.distanceKm().compareTo(MAX_DELIVERY_KM) > 0) {
             throw new ConflictException("Địa chỉ giao quá xa quán (tối đa " + MAX_DELIVERY_KM + " km)");
         }
+    }
+
+    /**
+     * Hoi VoucherService (Diep): ma co dung duoc khong, giam bao nhieu.
+     * Dua vao tam tinh va phi giao DO SERVER TINH (khong tin so tien client gui).
+     */
+    private VoucherValidateResponse checkVoucher(long userId, long restaurantId, PriceBreakdown price, String code) {
+        return voucherService.validateVoucher(
+                new VoucherValidateRequest(code.trim(), restaurantId, price.subtotal(), price.deliveryFee()), userId);
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private static String cleanNote(String note) {

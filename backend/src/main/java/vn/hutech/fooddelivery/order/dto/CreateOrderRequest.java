@@ -37,6 +37,10 @@ public record CreateOrderRequest(
         @Size(max = 255, message = "Ghi chú tối đa 255 ký tự")
         String note,
 
+        // Khong bat buoc. Ma khong dung duoc thi 409 kem ly do, khong tao don (tuan 5)
+        @Size(max = 30, message = "Mã voucher tối đa 30 ký tự")
+        String voucherCode,
+
         // TODO(khang): VNPAY, MOMO lam o phan thanh toan (tuan sau)
         @NotBlank(message = "Vui lòng chọn cách thanh toán")
         @Pattern(regexp = "COD", message = "Hiện chỉ hỗ trợ thanh toán khi nhận hàng (COD)")
