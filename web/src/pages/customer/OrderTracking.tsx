@@ -1,7 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { getApiError } from '../../api/apiError'
-import { cancelMyOrder, fetchMyOrder, isFinished, statusLabel, type OrderStatus } from '../../api/orders'
+import {
+  cancelMyOrder,
+  fetchMyOrder,
+  isFinished,
+  statusLabel,
+  type OrderDetail,
+  type OrderStatus,
+} from '../../api/orders'
 import { STATUS_BADGE } from './orderStatusStyle'
 
 // TODO(an): them ban do vi tri tai xe khi don dang giao (phan theo doi don cua An)
@@ -21,6 +28,13 @@ function noDriverText(status: OrderStatus): string {
 
 function vnd(amount: number) {
   return `${amount.toLocaleString('vi-VN')}đ`
+}
+
+// Cach thanh toan kem tinh trang tra tien. Don VNPay chi co buoc "Cho xac nhan" (PLACED) khi da tra tien.
+function paymentText(order: OrderDetail): string {
+  if (order.paymentMethod === 'COD') return 'COD'
+  const paid = order.history.some((h) => h.status === 'PLACED')
+  return paid ? 'VNPay · đã thanh toán' : 'VNPay · chưa thanh toán'
 }
 
 export default function OrderTracking() {
@@ -82,10 +96,14 @@ export default function OrderTracking() {
           </span>
         </div>
 
-        {/* Thanh tien trinh 5 buoc, hoac thong bao da huy */}
+        {/* Thanh tien trinh 5 buoc, hoac thong bao da huy / cho thanh toan */}
         {order.status === 'CANCELLED' ? (
           <p className="mt-4 rounded bg-gray-100 p-3 text-sm text-gray-700">
             Đơn đã hủy{order.cancelReason ? `: ${order.cancelReason}` : ''}
+          </p>
+        ) : order.status === 'PENDING_PAYMENT' ? (
+          <p className="mt-4 rounded bg-yellow-50 p-3 text-sm text-yellow-800">
+            Đơn đang chờ thanh toán qua VNPay. Quán chỉ nhận đơn sau khi thanh toán thành công.
           </p>
         ) : (
           <ol className="mt-4 grid grid-cols-5 gap-2 text-center text-xs">
@@ -164,8 +182,14 @@ export default function OrderTracking() {
               <span className="text-gray-600">Phí giao</span>
               <span>{vnd(order.deliveryFee)}</span>
             </div>
+            {order.discountAmount > 0 && (
+              <div className="flex justify-between text-green-700">
+                <span>Giảm giá</span>
+                <span>−{vnd(order.discountAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold">
-              <span>Tổng cộng (COD)</span>
+              <span>Tổng cộng ({paymentText(order)})</span>
               <span className="text-orange-600">{vnd(order.totalAmount)}</span>
             </div>
           </div>

@@ -90,6 +90,10 @@ public class OrderManagementService {
     @Transactional(readOnly = true)
     public OrderDetailResponse getMerchantOrder(long ownerUserId, long orderId) {
         checkMerchantOwns(findOrder(orderId), ownerUserId);
+        // Don VNPay chua tra tien (dang cho, hoac da huy vi thanh toan loi): quan chua tung nhan, giong danh sach
+        if (!orderRepository.isVisibleToMerchant(orderId)) {
+            throw new NotFoundException("Không tìm thấy đơn hàng");
+        }
         return orderService.getDetail(orderId);
     }
 
@@ -144,6 +148,7 @@ public class OrderManagementService {
             throw new ConflictException("Đơn vừa được cập nhật, vui lòng tải lại trang");
         }
         orderRepository.insertStatusHistory(order.id(), toStatus, changedBy, reason);
+        // TODO(khang): don VNPay da tra tien ma bi huy (khach hoac quan huy) thi tao yeu cau hoan tien (tuan 6-7)
         events.publishEvent(new OrderStatusChangedEvent(order.id(), order.restaurantId(), order.customerId(),
                 order.status(), toStatus, changedBy));
     }

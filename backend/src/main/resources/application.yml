@@ -30,3 +30,12 @@ app:
     phone: ${ADMIN_PHONE:}
     password: ${ADMIN_PASSWORD:}
   ai-service-url: ${AI_SERVICE_URL:http://localhost:8000}
+  vnpay:
+    # Thanh toan VNPay sandbox (Khang). Dien VNPAY_TMN_CODE, VNPAY_HASH_SECRET trong .env, KHONG commit gia tri that.
+    # Chua dien thi app van chay, chi rieng dat don VNPay bao loi. Dang ky: https://pay.vnpaytest.vn/dev-registration
+    tmn-code: ${VNPAY_TMN_CODE:}
+    hash-secret: ${VNPAY_HASH_SECRET:}
+    pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+    api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
+    # Trang cua web nhan ket qua khi khach thanh toan xong
+    return-url: ${VNPAY_RETURN_URL:http://localhost:5173/payment/vnpay-return}
