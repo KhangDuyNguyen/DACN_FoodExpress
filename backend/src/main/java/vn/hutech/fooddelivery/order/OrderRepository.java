@@ -183,6 +183,31 @@ public class OrderRepository {
         )).stream().findFirst();
     }
 
+    /**
+     * Doc vai cot cua don VA KHOA dong do den het transaction (SELECT ... FOR UPDATE).
+     * Luc tai xe nhan don (code cua An) cung ghi vao dong nay, nen 2 ben phai cho nhau, khong chen ngang:
+     * vd khach bam huy dung luc tai xe bam nhan thi 1 trong 2 phai doi ben kia xong roi doc lai.
+     * Chi khoa bang orders (khong JOIN) de khong khoa lan sang users, restaurants. (Y tuong tu PR #18 cua An.)
+     */
+    public Optional<LockedOrder> lockForUpdate(long orderId) {
+        String sql = """
+                SELECT id, customer_id, restaurant_id, driver_id, status
+                FROM orders WHERE id = :id
+                FOR UPDATE
+                """;
+        return jdbc.query(sql, Map.of("id", orderId), (rs, i) -> new LockedOrder(
+                rs.getLong("id"),
+                rs.getLong("customer_id"),
+                rs.getLong("restaurant_id"),
+                rs.getObject("driver_id", Long.class),
+                rs.getString("status")
+        )).stream().findFirst();
+    }
+
+    /** Vai cot cua don doc kem khoa dong (lockForUpdate). driverId null = chua co tai xe nhan. */
+    public record LockedOrder(long id, long customerId, long restaurantId, Long driverId, String status) {
+    }
+
     /** id tai xe (bang drivers cua module An) ung voi tai khoan users.id; chua dang ky tai xe thi rong. */
     public Optional<Long> findDriverIdByUserId(long userId) {
         return jdbc.queryForList("SELECT id FROM drivers WHERE user_id = :userId",
