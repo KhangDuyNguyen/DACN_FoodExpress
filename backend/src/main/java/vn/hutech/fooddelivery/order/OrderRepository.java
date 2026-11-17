@@ -132,10 +132,14 @@ public class OrderRepository {
                        r.name AS restaurant_name, r.phone AS restaurant_phone, r.address AS restaurant_address,
                        o.status, o.receiver_name, o.receiver_phone, o.delivery_address, o.note,
                        o.subtotal, o.delivery_fee, o.discount_amount, o.total_amount, o.payment_method,
-                       o.distance_km, o.cancel_reason, o.created_at, o.accepted_at, o.delivered_at, o.cancelled_at
+                       o.distance_km, o.cancel_reason, o.created_at, o.accepted_at, o.delivered_at, o.cancelled_at,
+                       o.driver_id, du.full_name AS driver_name, du.phone AS driver_phone,
+                       d.vehicle_type, d.license_plate
                 FROM orders o
                 JOIN restaurants r ON r.id = o.restaurant_id
                 JOIN users u ON u.id = o.customer_id
+                LEFT JOIN drivers d ON d.id = o.driver_id
+                LEFT JOIN users du ON du.id = d.user_id
                 WHERE o.id = :id
                 """;
         return jdbc.query(sql, Map.of("id", orderId), (rs, i) -> new OrderRow(
@@ -162,8 +166,20 @@ public class OrderRepository {
                 toLocalDateTime(rs.getTimestamp("created_at")),
                 toLocalDateTime(rs.getTimestamp("accepted_at")),
                 toLocalDateTime(rs.getTimestamp("delivered_at")),
-                toLocalDateTime(rs.getTimestamp("cancelled_at"))
+                toLocalDateTime(rs.getTimestamp("cancelled_at")),
+                // getObject(..., Long.class) giu duoc NULL khi don chua co tai xe
+                rs.getObject("driver_id", Long.class),
+                rs.getString("driver_name"),
+                rs.getString("driver_phone"),
+                rs.getString("vehicle_type"),
+                rs.getString("license_plate")
         )).stream().findFirst();
+    }
+
+    /** id tai xe (bang drivers cua module An) ung voi tai khoan users.id; chua dang ky tai xe thi rong. */
+    public Optional<Long> findDriverIdByUserId(long userId) {
+        return jdbc.queryForList("SELECT id FROM drivers WHERE user_id = :userId",
+                Map.of("userId", userId), Long.class).stream().findFirst();
     }
 
     public List<OrderItemResponse> findItems(long orderId) {
@@ -213,6 +229,7 @@ public class OrderRepository {
             rs.getInt("item_count"),
             rs.getString("receiver_name"),
             rs.getString("delivery_address"),
+            rs.getString("driver_name"),
             toLocalDateTime(rs.getTimestamp("created_at"))
     );
 
@@ -221,9 +238,11 @@ public class OrderRepository {
         String sql = """
                 SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name, o.status, o.total_amount,
                        (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
-                       o.receiver_name, o.delivery_address, o.created_at
+                       o.receiver_name, o.delivery_address, o.created_at, du.full_name AS driver_name
                 FROM orders o
                 JOIN restaurants r ON r.id = o.restaurant_id
+                LEFT JOIN drivers d ON d.id = o.driver_id
+                LEFT JOIN users du ON du.id = d.user_id
                 WHERE o.customer_id = :customerId
                   AND (:status IS NULL OR o.status = :status)
                 ORDER BY o.created_at DESC, o.id DESC
@@ -259,10 +278,12 @@ public class OrderRepository {
         String sql = """
                 SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name, o.status, o.total_amount,
                        (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
-                       o.receiver_name, o.delivery_address, o.created_at
+                       o.receiver_name, o.delivery_address, o.created_at, du.full_name AS driver_name
                 FROM orders o
                 JOIN restaurants r ON r.id = o.restaurant_id
                 JOIN merchants m ON m.id = r.merchant_id
+                LEFT JOIN drivers d ON d.id = o.driver_id
+                LEFT JOIN users du ON du.id = d.user_id
                 WHERE m.owner_user_id = :ownerUserId
                   AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
                   AND (:status IS NULL OR o.status = :status)

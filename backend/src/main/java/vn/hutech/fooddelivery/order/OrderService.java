@@ -1,5 +1,6 @@
 package vn.hutech.fooddelivery.order;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,10 +36,13 @@ public class OrderService {
 
     private final CartRepository cartRepository;
     private final OrderRepository orderRepository;
+    private final ApplicationEventPublisher events;
 
-    public OrderService(CartRepository cartRepository, OrderRepository orderRepository) {
+    public OrderService(CartRepository cartRepository, OrderRepository orderRepository,
+                        ApplicationEventPublisher events) {
         this.cartRepository = cartRepository;
         this.orderRepository = orderRepository;
+        this.events = events;
     }
 
     /**
@@ -103,6 +107,10 @@ public class OrderService {
 
         // 5. Dat xong thi xoa gio (cart_items tu xoa theo nho ON DELETE CASCADE)
         cartRepository.deleteCart(cart.id());
+
+        // 6. Bao cho module khac co don moi (moi tai xe, dashboard cua hang).
+        //    Ben nghe dung AFTER_COMMIT nen chi chay khi ca transaction nay commit thanh cong.
+        events.publishEvent(new OrderPlacedEvent(orderId, restaurant.id(), userId));
 
         return getDetail(orderId);
     }

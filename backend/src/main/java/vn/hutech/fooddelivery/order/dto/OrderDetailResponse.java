@@ -6,13 +6,14 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** Chi tiet 1 don hang: thong tin giao, cac mon, bang tien va lich su trang thai. */
+/** Chi tiet 1 don hang: thong tin giao, tai xe (null neu chua co), cac mon, bang tien va lich su trang thai. */
 public record OrderDetailResponse(
         long id,
         String code,
         String status,
         String customerName,
         OrderRestaurantResponse restaurant,
+        OrderDriverResponse driver,
         String receiverName,
         String receiverPhone,
         String deliveryAddress,
@@ -41,6 +42,8 @@ public record OrderDetailResponse(
                 row.customerName(),
                 new OrderRestaurantResponse(row.restaurantId(), row.restaurantName(),
                         row.restaurantPhone(), row.restaurantAddress()),
+                row.driverId() == null ? null : new OrderDriverResponse(row.driverName(), row.driverPhone(),
+                        row.driverVehicleType(), row.driverLicensePlate()),
                 row.receiverName(),
                 row.receiverPhone(),
                 row.deliveryAddress(),

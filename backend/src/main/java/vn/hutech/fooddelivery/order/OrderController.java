@@ -32,7 +32,7 @@ import vn.hutech.fooddelivery.security.AuthUser;
 public class OrderController {
 
     /** Cac trang thai dung trong tuan 3, dung de kiem tra tham so ?status= */
-    static final String STATUS_PATTERN = "PLACED|PREPARING|DELIVERING|DELIVERED|CANCELLED";
+    static final String STATUS_PATTERN = "PLACED|PREPARING|READY_FOR_PICKUP|DELIVERING|DELIVERED|CANCELLED";
 
     private final OrderService orderService;
     private final OrderManagementService orderManagementService;

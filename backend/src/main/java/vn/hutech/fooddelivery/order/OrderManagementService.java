@@ -1,5 +1,6 @@
 package vn.hutech.fooddelivery.order;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.hutech.fooddelivery.common.ConflictException;
@@ -12,19 +13,24 @@ import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
 import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
 
 /**
- * Quan ly don sau khi dat: khach xem/huy don cua minh, chu quan xem va doi trang thai don cua quan minh.
+ * Quan ly don sau khi dat: khach xem/huy don cua minh, chu quan xem va doi trang thai don cua quan minh,
+ * tai xe cap nhat buoc giao cho don minh da nhan.
  * Quyen SO HUU kiem tra o day (SecurityConfig chi kiem tra VAI TRO):
- *   khach chi dung duoc don co customer_id = minh, chu quan chi dung duoc don cua quan minh so huu.
+ *   khach chi dung duoc don co customer_id = minh, chu quan chi dung duoc don cua quan minh so huu,
+ *   tai xe chi dung duoc don co driver_id = minh.
  */
 @Service
 public class OrderManagementService {
 
     private final OrderRepository orderRepository;
     private final OrderService orderService;
+    private final ApplicationEventPublisher events;
 
-    public OrderManagementService(OrderRepository orderRepository, OrderService orderService) {
+    public OrderManagementService(OrderRepository orderRepository, OrderService orderService,
+                                  ApplicationEventPublisher events) {
         this.orderRepository = orderRepository;
         this.orderService = orderService;
+        this.events = events;
     }
 
     // ----- Khach hang -----
@@ -84,6 +90,24 @@ public class OrderManagementService {
         return orderService.getDetail(orderId);
     }
 
+    // ----- Tai xe -----
+
+    /**
+     * Tai xe bao da lay mon (DELIVERING) hoac da giao (DELIVERED).
+     * Chi tai xe dang duoc gan vao don (orders.driver_id) moi doi duoc. API tai xe goi ham nay
+     * de moi luat doi trang thai van nam chung mot cho (OrderStatusFlow).
+     */
+    @Transactional
+    public OrderDetailResponse changeStatusByDriver(long driverUserId, long orderId, String toStatus) {
+        OrderRow order = findOrder(orderId);
+        Long driverId = orderRepository.findDriverIdByUserId(driverUserId).orElse(null);
+        if (driverId == null || !driverId.equals(order.driverId())) {
+            throw new ForbiddenException("Đơn này không phải đơn bạn đang giao");
+        }
+        changeStatus(order, Actor.DRIVER, toStatus, driverUserId, null);
+        return orderService.getDetail(orderId);
+    }
+
     // ----- Dung chung -----
 
     /**
@@ -91,9 +115,14 @@ public class OrderManagementService {
      *   1. Luat chuyen (OrderStatusFlow) khong cho phep -> 409.
      *   2. UPDATE ... WHERE status = trang thai vua doc; 0 dong nghia la co nguoi vua doi truoc -> 409.
      *   3. Ghi them 1 dong lich su (ai doi, luc nao, ly do).
+     *   4. Phat OrderStatusChangedEvent; ben nghe chi chay sau khi transaction commit.
      */
     private void changeStatus(OrderRow order, Actor actor, String toStatus, long changedBy, String reason) {
-        if (!OrderStatusFlow.canChange(actor, order.status(), toStatus)) {
+        boolean hasDriver = order.driverId() != null;
+        if (actor == Actor.MERCHANT && hasDriver && OrderStatusFlow.isDeliveryStep(toStatus)) {
+            throw new ConflictException("Đơn đã có tài xế nhận, bước giao hàng do tài xế cập nhật");
+        }
+        if (!OrderStatusFlow.canChange(actor, order.status(), toStatus, hasDriver)) {
             throw new ConflictException("Không thể chuyển đơn từ \"" + OrderStatusFlow.label(order.status())
                     + "\" sang \"" + OrderStatusFlow.label(toStatus) + "\"");
         }
@@ -102,6 +131,8 @@ public class OrderManagementService {
             throw new ConflictException("Đơn vừa được cập nhật, vui lòng tải lại trang");
         }
         orderRepository.insertStatusHistory(order.id(), toStatus, changedBy, reason);
+        events.publishEvent(new OrderStatusChangedEvent(order.id(), order.restaurantId(), order.customerId(),
+                order.status(), toStatus, changedBy));
     }
 
     private OrderRow findOrder(long orderId) {
