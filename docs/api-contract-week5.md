@@ -204,6 +204,16 @@ Những điểm chốt khi làm (khác hoặc chi tiết hơn bản kế hoạch
 
 Còn phải làm khi có mã TMN: thử thật trên sandbox bằng thẻ NCB (thành công, khách bấm hủy), xem `querydr` trả gì với giao dịch bị hủy, và kiểm tra chữ ký phản hồi `querydr`. Tài liệu chỉ ghi thứ tự trường, còn trường bỏ trống thì nhóm đang để chuỗi rỗng.
 
+## Gộp PR #18 của An (chốt 17/11)
+
+#18 (`feature/an-tuan5-delivery-earnings`) làm lại luồng tài xế giao hàng mà Module E đã đưa vào `main` (#21), theo luồng khác (thêm `PICKED_UP`, tài xế nhận đơn thì đơn tự sang `PREPARING`) và trùng API `PATCH /api/driver/orders/{id}/status`. Nhóm chốt:
+
+- **Giữ luồng trên `main`**: PLACED → PREPARING (quán) → READY_FOR_PICKUP (quán) → DELIVERING → DELIVERED (tài xế; chưa có tài xế thì quán bấm thay). Không có `PICKED_UP`. Tài xế nhận đơn chỉ gắn `driver_id`.
+- **Package `order` (Khang)** nhận 2 quy tắc của An, nhánh `feature/khang-tuan05-khoa-don-huy`:
+  - Đổi trạng thái (khách hủy, quán đổi, tài xế đổi) đều đọc đơn kèm khóa dòng `SELECT ... FOR UPDATE` (`OrderRepository.lockForUpdate`), để không chen ngang lúc tài xế bấm nhận đơn.
+  - Đơn đã có tài xế nhận (`orders.driver_id` khác null) thì khách và quán không hủy được: 409 "Tài xế đã nhận giao đơn, chưa thể hủy đơn hàng". Web ẩn nút "Hủy đơn" trong trường hợp này.
+- **An** merge `main` vào #18 và lấy nguyên package `order` của `main`, bỏ API trùng cùng `DriverDeliveryService`, chuyển việc ghi thu nhập sang listener nghe `OrderStatusChangedEvent` (khi `DELIVERED`), bỏ `PICKED_UP` ở backend và app tài xế. Khang đã gửi hướng dẫn chi tiết.
+
 ## Không làm trong tuần 5 (đề xuất dời)
 
 | Việc | Lý do, thời điểm |
@@ -212,7 +222,7 @@ Còn phải làm khi có mã TMN: thử thật trên sandbox bằng thẻ NCB (t
 | Tùy chọn món (size, topping) trong giỏ và đơn | Sửa nhiều phần giỏ và đơn, dùng dữ liệu của Dưỡng (tuần 6) |
 | Hồ sơ khách (sửa tên, email, đổi mật khẩu) | Nhỏ, làm nếu tuần 5 dư thời gian |
 | Hoàn tiền VNPay, tự hủy đơn chờ thanh toán quá 15 phút | Tuần 6–7 cùng phần admin; tuần 5 ghi `TODO(khang)` |
-| Phối hợp An cập nhật PR #18 theo `main` | E đã vào `main` (#21). #18 trùng API `PATCH /api/driver/orders/{id}/status`, cần bỏ 1 trong 2 trước khi merge |
+| Phối hợp An cập nhật PR #18 theo `main` | Đã chốt cách gộp, xem mục "Gộp PR #18 của An" ở trên |
 
 ## Cần bạn chốt
 
