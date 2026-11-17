@@ -1,14 +1,16 @@
 package vn.hutech.foodexpress.customer.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import vn.hutech.foodexpress.customer.ui.test.CustomerTestScreenA
-import vn.hutech.foodexpress.customer.ui.test.CustomerTestScreenB
+import androidx.navigation.navArgument
+import vn.hutech.foodexpress.customer.restaurants.ui.detail.RestaurantDetailScreen
+import vn.hutech.foodexpress.customer.restaurants.ui.list.RestaurantListScreen
 
-private const val TEST_SCREEN_A_ROUTE = "test-a"
-private const val TEST_SCREEN_B_ROUTE = "test-b"
+private const val RESTAURANT_LIST_ROUTE = "restaurants"
+private const val RESTAURANT_DETAIL_ROUTE = "restaurants/{restaurantId}"
 
 @Composable
 fun CustomerAppNavigation() {
@@ -16,20 +18,26 @@ fun CustomerAppNavigation() {
 
     NavHost(
         navController = navController,
-        startDestination = TEST_SCREEN_A_ROUTE,
+        startDestination = RESTAURANT_LIST_ROUTE,
     ) {
-        composable(TEST_SCREEN_A_ROUTE) {
-            CustomerTestScreenA(
-                onNavigateToB = {
-                    navController.navigate(TEST_SCREEN_B_ROUTE) {
-                        launchSingleTop = true
-                    }
+        // Màn 1: Danh sách quán
+        composable(RESTAURANT_LIST_ROUTE) {
+            RestaurantListScreen(
+                onRestaurantClick = { restaurantId ->
+                    navController.navigate("restaurants/$restaurantId")
                 },
             )
         }
-        composable(TEST_SCREEN_B_ROUTE) {
-            CustomerTestScreenB(
-                onNavigateToA = { navController.popBackStack() },
+
+        // Màn 2: Chi tiết quán + menu
+        composable(
+            route = RESTAURANT_DETAIL_ROUTE,
+            arguments = listOf(
+                navArgument("restaurantId") { type = NavType.LongType }
+            ),
+        ) {
+            RestaurantDetailScreen(
+                onBack = { navController.popBackStack() },
             )
         }
     }
