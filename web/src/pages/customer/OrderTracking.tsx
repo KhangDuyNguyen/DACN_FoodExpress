@@ -164,6 +164,12 @@ export default function OrderTracking() {
               <span className="text-gray-600">Phí giao</span>
               <span>{vnd(order.deliveryFee)}</span>
             </div>
+            {order.discountAmount > 0 && (
+              <div className="flex justify-between text-green-700">
+                <span>Giảm giá</span>
+                <span>−{vnd(order.discountAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold">
               <span>Tổng cộng (COD)</span>
               <span className="text-orange-600">{vnd(order.totalAmount)}</span>

@@ -61,6 +61,11 @@ export interface PriceBreakdown {
   discountAmount: number
   totalAmount: number
   distanceKm: number
+  // Tuan 5: chi co khi gui voucherCode. Ma va ten chi co khi AP DUNG DUOC;
+  // voucherMessage la loi nhan (thanh cong hoac ly do ma khong dung duoc)
+  voucherCode: string | null
+  voucherTitle: string | null
+  voucherMessage: string | null
 }
 
 export interface OrderItem {
@@ -112,10 +117,15 @@ export interface CreateOrderBody {
   deliveryLat: number
   deliveryLng: number
   note?: string
+  voucherCode?: string // server tu kiem tra lai va tu tinh so tien giam
   paymentMethod: 'COD'
 }
 
-export async function previewOrder(body: { deliveryLat: number; deliveryLng: number }): Promise<PriceBreakdown> {
+export async function previewOrder(body: {
+  deliveryLat: number
+  deliveryLng: number
+  voucherCode?: string
+}): Promise<PriceBreakdown> {
   const res = await api.post<PriceBreakdown>('/orders/preview', body)
   return res.data
 }
