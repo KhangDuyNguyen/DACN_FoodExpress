@@ -22,6 +22,7 @@ const PAGE_SIZE = 20
 const STATUS_COLOR: Partial<Record<OrderStatus, string>> = {
   PLACED: 'orange',
   PREPARING: 'blue',
+  READY_FOR_PICKUP: 'cyan',
   DELIVERING: 'purple',
   DELIVERED: 'green',
   CANCELLED: 'default',
@@ -30,6 +31,7 @@ const STATUS_COLOR: Partial<Record<OrderStatus, string>> = {
 const STATUS_TABS: { key: OrderStatus | 'ALL'; label: string }[] = [
   { key: 'PLACED', label: 'Chờ xác nhận' },
   { key: 'PREPARING', label: 'Đang chuẩn bị' },
+  { key: 'READY_FOR_PICKUP', label: 'Chờ lấy món' },
   { key: 'DELIVERING', label: 'Đang giao' },
   { key: 'DELIVERED', label: 'Hoàn thành' },
   { key: 'CANCELLED', label: 'Đã hủy' },
@@ -39,9 +41,12 @@ const STATUS_TABS: { key: OrderStatus | 'ALL'; label: string }[] = [
 // Buoc tiep theo cua tung trang thai, khop voi luat OrderStatusFlow o backend
 const NEXT_ACTION: Partial<Record<OrderStatus, { status: OrderStatus; label: string }>> = {
   PLACED: { status: 'PREPARING', label: 'Nhận đơn' },
-  PREPARING: { status: 'DELIVERING', label: 'Bắt đầu giao' },
+  PREPARING: { status: 'READY_FOR_PICKUP', label: 'Món đã xong' },
+  READY_FOR_PICKUP: { status: 'DELIVERING', label: 'Bắt đầu giao' },
   DELIVERING: { status: 'DELIVERED', label: 'Hoàn thành' },
 }
+// 2 buoc giao hang: don da co tai xe thi tai xe bam tren app, quan chi bam khi chua co tai xe
+const DELIVERY_STEPS: OrderStatus[] = ['DELIVERING', 'DELIVERED']
 const CAN_CANCEL: OrderStatus[] = ['PLACED', 'PREPARING']
 
 function vnd(amount: number) {
@@ -125,6 +130,11 @@ export const MerchantOrdersPage: React.FC = () => {
     { title: 'Số phần', dataIndex: 'itemCount', key: 'itemCount', align: 'center' },
     { title: 'Tổng tiền', key: 'total', align: 'right', render: (_, o) => vnd(o.totalAmount) },
     {
+      title: 'Tài xế',
+      key: 'driver',
+      render: (_, o) => o.driverName ?? <Text type="secondary">Chưa có</Text>,
+    },
+    {
       title: 'Trạng thái',
       key: 'status',
       render: (_, o) => <Tag color={STATUS_COLOR[o.status]}>{statusLabel(o.status)}</Tag>,
@@ -134,12 +144,13 @@ export const MerchantOrdersPage: React.FC = () => {
       key: 'actions',
       render: (_, o) => {
         const next = NEXT_ACTION[o.status]
+        const driverDoesNext = !!next && !!o.driverName && DELIVERY_STEPS.includes(next.status)
         return (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <Button size="small" onClick={() => setDetailId(o.id)}>
               Chi tiết
             </Button>
-            {next && (
+            {next && !driverDoesNext && (
               <Button
                 size="small"
                 type="primary"
@@ -148,6 +159,11 @@ export const MerchantOrdersPage: React.FC = () => {
               >
                 {next.label}
               </Button>
+            )}
+            {driverDoesNext && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Tài xế cập nhật
+              </Text>
             )}
             {CAN_CANCEL.includes(o.status) && (
               <Button size="small" danger onClick={() => setCancelTarget(o)}>
@@ -204,7 +220,7 @@ export const MerchantOrdersPage: React.FC = () => {
             total: data?.totalItems ?? 0,
             onChange: (p) => setPage(p - 1),
           }}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1000 }}
         />
       </Card>
 
@@ -229,6 +245,14 @@ export const MerchantOrdersPage: React.FC = () => {
                 {detail.receiverName} · {detail.receiverPhone}
               </Descriptions.Item>
               <Descriptions.Item label="Địa chỉ">{detail.deliveryAddress}</Descriptions.Item>
+              <Descriptions.Item label="Tài xế">
+                {detail.driver ? (
+                  `${detail.driver.name} · ${detail.driver.phone}` +
+                  (detail.driver.licensePlate ? ` · ${detail.driver.licensePlate}` : '')
+                ) : (
+                  <Text type="secondary">Chưa có tài xế nhận</Text>
+                )}
+              </Descriptions.Item>
               {detail.note && <Descriptions.Item label="Ghi chú">{detail.note}</Descriptions.Item>}
               {detail.cancelReason && <Descriptions.Item label="Lý do hủy">{detail.cancelReason}</Descriptions.Item>}
             </Descriptions>
