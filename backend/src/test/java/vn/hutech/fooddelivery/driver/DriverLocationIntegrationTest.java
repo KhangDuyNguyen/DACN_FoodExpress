@@ -35,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 
 /** HTTP/JWT/MySQL that; chi ghi du lieu va gay loi rang buoc trong container test rieng. */
@@ -158,7 +159,7 @@ class DriverLocationIntegrationTest {
                 INSERT INTO driver_locations (driver_id, lat, lng)
                 VALUES (:missingDriverId, 10, 106)
                 """, Map.of("missingDriverId", 999999L)))
-                .when(driverLocationRepository).insert(eq(driver.driverId()), any(), any(), any());
+                .when(driverLocationRepository).insert(eq(driver.driverId()), isNull(), any(), any(), any());
 
         var response = post(driver.token(), "{\"lat\":10,\"lng\":106}");
 

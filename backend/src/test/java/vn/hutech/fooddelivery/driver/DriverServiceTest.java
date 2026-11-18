@@ -17,6 +17,7 @@ import vn.hutech.fooddelivery.driver.dto.DriverLocationRequest;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,7 +30,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -124,8 +125,10 @@ class DriverServiceTest {
         assertTrue(response.recordedAt().isBefore(LocalDateTime.now().plusSeconds(1)));
         assertEquals(0, response.recordedAt().getNano());
         var order = inOrder(driverRepository, driverLocationRepository);
+        order.verify(driverLocationRepository).lockActiveOrderIds(42);
         order.verify(driverRepository).findIdByUserIdForUpdate(42);
-        order.verify(driverLocationRepository).insert(7, response.lat(), response.lng(), response.recordedAt());
+        order.verify(driverLocationRepository).findActiveOrders(7);
+        order.verify(driverLocationRepository).insert(7, null, response.lat(), response.lng(), response.recordedAt());
         order.verify(driverRepository).updateLocation(7, response.lat(), response.lng(), response.recordedAt());
         order.verifyNoMoreInteractions();
     }
@@ -136,7 +139,23 @@ class DriverServiceTest {
 
         assertThrows(NotFoundException.class, () -> driverService.recordLocation(42,
                 new DriverLocationRequest(BigDecimal.ZERO, BigDecimal.ZERO)));
-        verifyNoInteractions(driverLocationRepository);
+        verify(driverLocationRepository).lockActiveOrderIds(42);
+        verifyNoMoreInteractions(driverLocationRepository);
         verify(driverRepository, never()).updateLocation(anyLong(), any(), any(), any());
+    }
+
+    @Test
+    void locationDoesNotLinkAnOrderThatAppearedAfterTheOrderLocks() {
+        when(driverLocationRepository.lockActiveOrderIds(42)).thenReturn(List.of());
+        when(driverRepository.findIdByUserIdForUpdate(42)).thenReturn(Optional.of(7L));
+        when(driverLocationRepository.findActiveOrders(7)).thenReturn(
+                List.of(new DriverLocationRepository.ActiveOrder(88, "DELIVERING")));
+        when(driverRepository.updateLocation(eq(7L), any(), any(), any())).thenReturn(1);
+
+        var response = driverService.recordLocation(42,
+                new DriverLocationRequest(new BigDecimal("10.77"), new BigDecimal("106.70")));
+
+        verify(driverLocationRepository).insert(7, null, response.lat(), response.lng(), response.recordedAt());
+        verify(driverRepository).updateLocation(7, response.lat(), response.lng(), response.recordedAt());
     }
 }

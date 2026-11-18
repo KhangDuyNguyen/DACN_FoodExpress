@@ -28,6 +28,7 @@ import java.util.stream.Stream;
 import static org.hamcrest.Matchers.aMapWithSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -71,7 +72,7 @@ class DriverLocationWebMvcTest {
                 .andExpect(jsonPath("$.lng").value(new BigDecimal(lng).doubleValue()))
                 .andExpect(jsonPath("$.recordedAt").isString());
         verify(driverRepository).findIdByUserIdForUpdate(42);
-        verify(driverLocationRepository).insert(eq(7L), eq(new BigDecimal(lat)), eq(new BigDecimal(lng)), any());
+        verify(driverLocationRepository).insert(eq(7L), isNull(), eq(new BigDecimal(lat)), eq(new BigDecimal(lng)), any());
     }
 
     static Stream<Arguments> validCoordinates() {
@@ -132,7 +133,7 @@ class DriverLocationWebMvcTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"lat\":10,\"lng\":106}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
-        verifyNoInteractions(driverLocationRepository);
+        verify(driverLocationRepository).lockActiveOrderIds(42);
     }
 
     @Test
