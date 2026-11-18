@@ -45,3 +45,24 @@ export async function fetchMe(): Promise<User> {
   const res = await api.get<User>('/users/me')
   return res.data
 }
+
+// ── Ho so cua chinh minh (tuan 5). So dien thoai khong doi duoc vi dung de dang nhap. ──
+
+export interface UpdateProfileBody {
+  fullName: string
+  email: string // de trong = bo email
+}
+
+export async function updateMe(body: UpdateProfileBody): Promise<User> {
+  const res = await api.put<User>('/users/me', body)
+  return res.data
+}
+
+export interface ChangePasswordBody {
+  currentPassword: string
+  newPassword: string
+}
+
+export async function changePassword(body: ChangePasswordBody): Promise<void> {
+  await api.put('/users/me/password', body)
+}
