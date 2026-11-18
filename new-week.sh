@@ -1,18 +1,22 @@
 #!/bin/bash
-# Script tạo nhánh mới cho tuần mới - tự động sync main
+# Script tạo nhánh mới cho tuần mới theo format team
 
 set -e
 
 if [ -z "$1" ]; then
     echo "❌ Thiếu số tuần!"
-    echo "Cách dùng: ./new-week.sh 7"
+    echo "Cách dùng: ./new-week.sh 7 [mô-tả]"
+    echo "Ví dụ: ./new-week.sh 7 cart-payment"
     exit 1
 fi
 
 WEEK=$1
-BRANCH_NAME="duongtuan$WEEK"
+DESCRIPTION=${2:-feature}
 
-echo "🚀 Tạo nhánh mới cho tuần $WEEK..."
+# Format: feature/duong-tuan<X>-<mô-tả>
+BRANCH_NAME="feature/duong-tuan$(printf "%02d" $WEEK)-$DESCRIPTION"
+
+echo "🚀 Tạo nhánh mới: $BRANCH_NAME"
 
 # Đảm bảo main cập nhật
 echo "📥 Cập nhật main..."
@@ -22,7 +26,7 @@ git pull origin main
 # Kiểm tra nhánh đã tồn tại chưa
 if git show-ref --verify --quiet refs/heads/$BRANCH_NAME; then
     echo "⚠️  Nhánh $BRANCH_NAME đã tồn tại!"
-    read -p "Bạn muốn [U]pdate hay [C]reate new? (u/c): " choice
+    read -p "Bạn muốn [U]pdate hay [C]ancel? (u/c): " choice
     if [ "$choice" == "u" ] || [ "$choice" == "U" ]; then
         git checkout $BRANCH_NAME
         git merge main --no-edit

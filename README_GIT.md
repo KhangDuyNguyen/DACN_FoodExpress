@@ -4,9 +4,14 @@
 
 ### **1. Bắt đầu tuần mới (chạy 1 lần)**
 ```bash
-./new-week.sh 7
+./new-week.sh 7 review-system
 ```
-→ Tự động tạo nhánh `duongtuan7` từ main mới nhất
+→ Tự động tạo nhánh `feature/duong-tuan07-review-system` từ main
+
+**Ví dụ tên nhánh:**
+- Tuần 7 - Cart & Payment: `feature/duong-tuan07-cart-payment`
+- Tuần 8 - Notifications: `feature/duong-tuan08-notifications`
+- Tuần 9 - Testing: `feature/duong-tuan09-testing`
 
 ### **2. Mỗi sáng trước khi code (chạy hàng ngày)**
 ```bash
@@ -18,14 +23,14 @@
 ```bash
 git add .
 git commit -m "feat(tuần7): mô tả ngắn gọn"
-git push origin duongtuan7
+git push origin feature/duong-tuan07-review-system
 ```
 
 ### **4. Khi PR bị conflict**
 ```bash
 ./sync-main.sh
 # Nếu có conflict → sửa file → test
-git push origin duongtuan7
+git push origin feature/duong-tuan07-review-system
 ```
 
 ---
@@ -44,15 +49,29 @@ git push origin duongtuan7
 
 ---
 
+## 🎨 Format branch của team
+
+```
+feature/<tên>-tuan<XX>-<mô-tả>
+```
+
+**Ví dụ:**
+- An:    `feature/an-tuan05-delivery-earnings`
+- Điệp:  `feature/diep-tuan05-backend-giaodien`
+- Dưỡng: `feature/duong-tuan07-review-system`
+- Khang:  `feature/khang-tuan05-vnpay`
+
+---
+
 ## 🚨 Xử lý tình huống
 
 ### **Tình huống 1: Làm nhầm trên main**
 ```bash
 # Chuyển sang nhánh đúng
-git checkout duongtuan7
+git checkout feature/duong-tuan07-review-system
 # Copy commit từ main sang
 git cherry-pick <commit_hash>
-# Undo commit trên main (báo Khang trước!)
+# Báo Khang để undo commit trên main
 ```
 
 ### **Tình huống 2: Conflict khi merge**
@@ -80,7 +99,7 @@ git push
 # Kéo main về
 ./sync-main.sh
 # Push lại
-git push origin duongtuan7
+git push origin feature/duong-tuan07-review-system
 ```
 
 ---

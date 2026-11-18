@@ -1,0 +1,85 @@
+╔═══════════════════════════════════════════════════════════════╗
+║       📅 QUY TRÌNH LÀM VIỆC HÀNG NGÀY - TRẦN XUÂN DƯỠNG      ║
+╚═══════════════════════════════════════════════════════════════╝
+
+🌅 MỖI SÁNG (TRƯỚC KHI CODE):
+─────────────────────────────────────────────────────────────────
+1. Mở Terminal, cd vào folder dự án:
+   cd ~/DACN_FoodExpress
+
+2. Chạy script sync main:
+   ./sync-main.sh
+
+3. Nếu không có conflict → Bắt đầu code!
+   Nếu có conflict → Xem hướng dẫn trong README_GIT.md
+
+
+🌆 MỖI CHIỀU (SAU KHI CODE XONG):
+─────────────────────────────────────────────────────────────────
+1. Commit code:
+   git add .
+   git commit -m "feat(tuần<X>): <mô tả ngắn gọn>"
+
+2. Sync main lần cuối (đề phòng bạn khác vừa push):
+   ./sync-main.sh
+
+3. Test build:
+   Backend: cd backend && ./mvnw compile
+   Web:     cd web && npm run build  
+   Android: cd android && ./gradlew assembleDebug
+
+4. Push lên GitHub:
+   git push origin feature/duong-tuan<XX>-<mô-tả>
+
+
+🚀 KHI BẮT ĐẦU TUẦN MỚI:
+─────────────────────────────────────────────────────────────────
+1. Chạy script tạo nhánh tuần mới:
+   ./new-week.sh 7 review-system
+
+   Ví dụ format:
+   - Tuần 7: ./new-week.sh 7 cart-payment
+   - Tuần 8: ./new-week.sh 8 notifications
+
+2. Tự động tạo nhánh: feature/duong-tuan07-review-system
+
+3. Bắt đầu code như bình thường!
+
+
+📝 FORMAT BRANCH TEAM:
+─────────────────────────────────────────────────────────────────
+feature/<tên>-tuan<XX>-<mô-tả>
+
+Ví dụ:
+- An:    feature/an-tuan05-delivery-earnings
+- Điệp:  feature/diep-tuan05-backend-giaodien  
+- Dưỡng: feature/duong-tuan07-review-system
+- Khang:  feature/khang-tuan05-vnpay
+
+
+⚠️  KHI GẶP CONFLICT:
+─────────────────────────────────────────────────────────────────
+1. ĐỪNG PANIC!
+2. Mở file docs/GitWorkflow.md
+3. Tìm phần "Xử lý conflict khi merge"
+4. Follow từng bước
+5. Hỏi nhóm Zalo nếu vẫn bí
+
+
+✅ 3 NGUYÊN TẮC VÀNG:
+─────────────────────────────────────────────────────────────────
+1. Chạy ./sync-main.sh MỖI SÁNG
+2. Test trước khi push
+3. Hỏi nhóm trước khi sửa file chung (App.tsx, SecurityConfig.java...)
+
+
+📞 LIÊN HỆ KHẨN CẤP:
+─────────────────────────────────────────────────────────────────
+- Khang (Lead): @khang_zalo
+- Nhóm Zalo: DACN FoodExpress
+
+
+╔═══════════════════════════════════════════════════════════════╗
+║  💡 Nhớ: Conflict xảy ra vì không sync main thường xuyên!     ║
+║      Chạy ./sync-main.sh mỗi sáng = 0% conflict! ✨           ║
+╚═══════════════════════════════════════════════════════════════╝
