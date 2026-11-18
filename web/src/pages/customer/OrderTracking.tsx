@@ -103,7 +103,8 @@ export default function OrderTracking() {
           </p>
         ) : order.status === 'PENDING_PAYMENT' ? (
           <p className="mt-4 rounded bg-yellow-50 p-3 text-sm text-yellow-800">
-            Đơn đang chờ thanh toán qua VNPay. Quán chỉ nhận đơn sau khi thanh toán thành công.
+            Đơn đang chờ thanh toán qua VNPay. Quán chỉ nhận đơn sau khi thanh toán thành công; quá 15 phút chưa
+            thanh toán thì đơn tự hủy.
           </p>
         ) : (
           <ol className="mt-4 grid grid-cols-5 gap-2 text-center text-xs">
