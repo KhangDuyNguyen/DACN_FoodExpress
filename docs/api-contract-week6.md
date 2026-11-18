@@ -63,7 +63,22 @@ Theo bảng phân công: "Admin: user, đơn toàn sàn, phí ship". Mọi API d
 
 ### Test
 
-- Tài khoản ADMIN cho test: đặt `app.admin.phone`, `app.admin.password` để `AdminInitializer` tạo sẵn.
+- Tài khoản ADMIN cho test: dùng admin demo có sẵn trong seed (`0900000001`). `AdminInitializer` không tạo admin mới khi DB đã có 1 tài khoản ADMIN.
 - Người dùng: lọc, tìm; khóa → đăng nhập 403 và token cũ không gọi được API; mở khóa; không khóa được ADMIN; khách gọi API admin → 403.
 - Đơn: lọc theo trạng thái, quán, mã đơn; chi tiết; khách gọi → 403.
 - Phí ship: tạo quy tắc mới → xem trước đơn dùng phí mới; tắt quy tắc cuối cùng → 409.
+
+## Kết quả (18/11)
+
+| Module | Nhánh | Test |
+|---|---|---|
+| L | `feature/khang-tuan06-huy-don-qua-han` | 3 test mới trong `VnPayPaymentIntegrationTest`; toàn bộ 961/961 |
+| K | `feature/khang-tuan06-admin` | `AdminUserIntegrationTest` (4), `AdminOrderIntegrationTest` (3), `DeliveryFeeRuleIntegrationTest` (3); toàn bộ 968/968 |
+
+- K: thử cố ý làm hỏng 3 quy tắc (không khóa ADMIN, lọc theo trạng thái, giữ ít nhất 1 quy tắc phí), test đều bắt được, rồi trả code về.
+- Đã thử trên trình duyệt bằng admin demo: mở khóa rồi khóa lại tài khoản demo bị khóa (đăng nhập 200 rồi 403), tìm đơn theo mã, xem chi tiết đơn, tắt quy tắc phí duy nhất → báo "Phải còn ít nhất 1 quy tắc phí giao đang bật".
+- Điểm chốt khi làm K:
+  - Tìm người dùng theo một phần (`LIKE '%abc%'`); tìm đơn theo đầu mã đơn hoặc đầu SĐT (`LIKE 'abc%'`).
+  - Tắt quy tắc phí: khóa các quy tắc đang bật (`SELECT ... FOR UPDATE`) rồi mới đếm, để 2 admin tắt cùng lúc không làm mất hết quy tắc.
+  - Trang admin dùng TanStack Query theo `CONVENTIONS.md`, giao diện Ant Design như trang của Điệp. Chỉ thêm 3 mục menu vào `AdminLayout.tsx` của Điệp.
+- J, L, K đều tách từ cùng 1 `main`; đã thử gộp trước, không xung đột, merge thứ tự nào cũng được.
