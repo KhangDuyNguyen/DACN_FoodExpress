@@ -24,6 +24,10 @@ import AdminMerchantApprovalPage from './pages/admin/AdminMerchantApprovalPage'
 import AdminOverviewPage from './pages/admin/AdminOverviewPage'
 import AdminSupportPage from './pages/admin/AdminSupportPage'
 import AdminVoucherPage from './pages/admin/AdminVoucherPage'
+// Quản trị viên (phần của Khang: người dùng, đơn toàn sàn, phí ship)
+import AdminDeliveryFeesPage from './pages/admin/AdminDeliveryFeesPage'
+import AdminOrdersPage from './pages/admin/AdminOrdersPage'
+import AdminUsersPage from './pages/admin/AdminUsersPage'
 
 // Cửa hàng (Merchant)
 import MenuManagement from './pages/merchant/MenuManagement'
@@ -89,6 +93,9 @@ export default function App() {
           <Route path="merchants-approval" element={<AdminMerchantApprovalPage />} />
           <Route path="drivers-approval" element={<AdminDriverApprovalPage />} />
           <Route path="support" element={<AdminSupportPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="delivery-fees" element={<AdminDeliveryFeesPage />} />
         </Route>
       </Route>
     </Routes>
