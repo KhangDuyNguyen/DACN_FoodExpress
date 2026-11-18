@@ -191,7 +191,7 @@ public class OrderRepository {
      */
     public Optional<LockedOrder> lockForUpdate(long orderId) {
         String sql = """
-                SELECT id, customer_id, restaurant_id, driver_id, status
+                SELECT id, customer_id, restaurant_id, driver_id, status, delivery_fee
                 FROM orders WHERE id = :id
                 FOR UPDATE
                 """;
@@ -200,12 +200,13 @@ public class OrderRepository {
                 rs.getLong("customer_id"),
                 rs.getLong("restaurant_id"),
                 rs.getObject("driver_id", Long.class),
-                rs.getString("status")
+                rs.getString("status"),
+                rs.getBigDecimal("delivery_fee")
         )).stream().findFirst();
     }
 
     /** Vai cot cua don doc kem khoa dong (lockForUpdate). driverId null = chua co tai xe nhan. */
-    public record LockedOrder(long id, long customerId, long restaurantId, Long driverId, String status) {
+    public record LockedOrder(long id, long customerId, long restaurantId, Long driverId, String status, BigDecimal deliveryFee) {
     }
 
     /** id tai xe (bang drivers cua module An) ung voi tai khoan users.id; chua dang ky tai xe thi rong. */

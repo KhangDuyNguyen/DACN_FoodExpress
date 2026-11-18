@@ -34,12 +34,6 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of(HttpStatus.CONFLICT.value(), ex.getMessage()));
     }
 
-    @ExceptionHandler(BadRequestException.class)
-    ResponseEntity<ApiError> handleBadRequest(BadRequestException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiError.of(HttpStatus.BAD_REQUEST.value(), ex.getMessage()));
-    }
-
     @ExceptionHandler(ForbiddenException.class)
     ResponseEntity<ApiError> handleForbidden(ForbiddenException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -52,7 +46,7 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of(HttpStatus.UNAUTHORIZED.value(), ex.getMessage()));
     }
 
-    @ExceptionHandler({BadRequestException.class, IllegalArgumentException.class})
+    @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ApiError> handleBadRequest(RuntimeException ex) {
         return ResponseEntity.badRequest()
                 .body(ApiError.of(HttpStatus.BAD_REQUEST.value(), ex.getMessage()));

@@ -127,6 +127,27 @@ fun main() {
                 awaitCondition { f.source.loads >= 2 }
                 check(f.source.actions.size == 1 && f.source.actions.single().action == OfferAction.REJECT)
             }
+            case("Consuming Reject feedback changes only its message and never issues a request") {
+                val f = fixture(); f.awaitOffer(); f.source.offers = emptyList()
+                f.vm.reject(); awaitCondition { f.vm.state.value.phase == DriverOfferPhase.REJECTED }
+                val notice = f.vm.state.value; val calls = f.source.actions.size
+                f.vm.dismissRejectedNotice(notice)
+                check(f.vm.state.value == notice.copy(message = null) && f.source.actions.size == calls)
+                f.source.offers = listOf(sample(2)); f.vm.refresh(); f.awaitOffer()
+                val next = f.vm.state.value
+                f.vm.dismissRejectedNotice(notice)
+                check(f.vm.state.value === next && next.offer?.offerId == 2L)
+            }
+            case("Stale Reject dismissal cannot clear a later error or a different owner's pending action") {
+                val f = fixture(); f.awaitOffer(); f.source.offers = emptyList()
+                f.vm.reject(); awaitCondition { f.vm.state.value.phase == DriverOfferPhase.REJECTED }
+                val notice = f.vm.state.value
+                f.source.loadResult = OffersResult.Failed("later network error"); f.vm.refresh()
+                awaitCondition { f.vm.state.value.phase == DriverOfferPhase.NETWORK_ERROR }
+                val error = f.vm.state.value; f.vm.dismissRejectedNotice(notice); check(f.vm.state.value === error)
+                f.vm.activateSession(9)
+                val other = f.vm.state.value; f.vm.dismissRejectedNotice(notice); check(f.vm.state.value === other)
+            }
             case("In-flight POST past deadline closes offer without claiming failure or allowing duplicates") {
                 val f = fixture(); f.awaitOffer(); f.source.actionGate = CompletableDeferred()
                 f.vm.accept(); awaitCondition { f.source.actions.size == 1 }

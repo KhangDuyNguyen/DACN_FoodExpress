@@ -161,6 +161,12 @@ class DriverOffersViewModel @Inject constructor(
 
     fun refresh() { if (canPoll()) refreshRequests.trySend(Unit) }
 
+    // Acknowledging presentation feedback must not clear a newer offer, error or pending decision.
+    fun dismissRejectedNotice(expected: DriverOffersUiState) {
+        if (state.value === expected && expected.phase == DriverOfferPhase.REJECTED && expected.pending == null)
+            mutableState.value = expected.copy(message = null)
+    }
+
     fun accept() = decideNew(OfferAction.ACCEPT)
     fun reject() = decideNew(OfferAction.REJECT)
 
