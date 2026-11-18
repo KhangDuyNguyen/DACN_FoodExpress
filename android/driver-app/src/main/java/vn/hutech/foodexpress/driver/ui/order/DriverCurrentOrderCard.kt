@@ -53,7 +53,6 @@ fun DriverCurrentOrderCard(state: DriverCurrentOrderUiState, onRetry: () -> Unit
                         // Current Order only contains orders assigned to the authenticated driver.
                         // PLACED after Accept confirms ownership, not pickup or delivery progress.
                         val statusLabel = when (order.status) {
-                            "PLACED" -> "Đã nhận đơn"
                             "PENDING_PAYMENT" -> "Chờ thanh toán"
                             "DELIVERED" -> "Giao hàng thành công"
                             "CANCELLED" -> "Đơn đã hủy"

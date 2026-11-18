@@ -2,7 +2,7 @@ package vn.hutech.fooddelivery.order;
 
 import java.math.BigDecimal;
 
-/** Du lieu de INSERT 1 dong vao bang orders (trang thai luon bat dau la PLACED). */
+/** Du lieu de INSERT 1 dong vao bang orders. */
 public record NewOrder(
         String code,
         long customerId,
@@ -18,6 +18,8 @@ public record NewOrder(
         BigDecimal discountAmount,
         BigDecimal totalAmount,
         String paymentMethod,
-        BigDecimal distanceKm
+        BigDecimal distanceKm,
+        // PLACED (COD: cho quan xac nhan ngay) hoac PENDING_PAYMENT (VNPay: cho khach tra tien)
+        String status
 ) {
 }

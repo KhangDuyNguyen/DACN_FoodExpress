@@ -7,10 +7,13 @@ export type OrderStatus =
   | 'PENDING_PAYMENT' | 'PLACED' | 'ACCEPTED' | 'PREPARING' | 'READY_FOR_PICKUP'
   | 'PICKED_UP' | 'DELIVERING' | 'DELIVERED' | 'CANCELLED' | 'REJECTED'
 
-// 5 trang thai dung trong tuan 3 (giong OrderStatusFlow o backend)
+// Cac trang thai dang dung (giong OrderStatusFlow o backend). Tuan 4 them "Cho lay mon",
+// tuan 5 them "Cho thanh toan" (don VNPay chua tra tien, chi khach thay)
 export const ORDER_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
+  PENDING_PAYMENT: 'Chờ thanh toán',
   PLACED: 'Chờ xác nhận',
   PREPARING: 'Đang chuẩn bị',
+  READY_FOR_PICKUP: 'Chờ lấy món',
   DELIVERING: 'Đang giao',
   DELIVERED: 'Hoàn thành',
   CANCELLED: 'Đã hủy',
@@ -35,7 +38,23 @@ export interface OrderSummary {
   itemCount: number
   receiverName: string
   deliveryAddress: string
+  driverName: string | null // null khi chua co tai xe nhan
   createdAt: string
+}
+
+export interface MerchantOrderSummary extends OrderSummary {
+  receiverPhone: string
+  note: string | null
+  paymentMethod: 'COD' | 'VNPAY' | 'MOMO'
+  items: OrderItem[]
+}
+
+// Tai xe da nhan don (null khi chua co)
+export interface OrderDriver {
+  name: string
+  phone: string
+  vehicleType: 'MOTORBIKE' | 'BICYCLE' | 'CAR'
+  licensePlate: string | null
 }
 
 export interface PriceBreakdown {
@@ -44,6 +63,11 @@ export interface PriceBreakdown {
   discountAmount: number
   totalAmount: number
   distanceKm: number
+  // Tuan 5: chi co khi gui voucherCode. Ma va ten chi co khi AP DUNG DUOC;
+  // voucherMessage la loi nhan (thanh cong hoac ly do ma khong dung duoc)
+  voucherCode: string | null
+  voucherTitle: string | null
+  voucherMessage: string | null
 }
 
 export interface OrderItem {
@@ -67,6 +91,7 @@ export interface OrderDetail {
   status: OrderStatus
   customerName: string
   restaurant: { id: number; name: string; phone: string | null; address: string }
+  driver: OrderDriver | null
   receiverName: string
   receiverPhone: string
   deliveryAddress: string
@@ -94,16 +119,26 @@ export interface CreateOrderBody {
   deliveryLat: number
   deliveryLng: number
   note?: string
-  paymentMethod: 'COD'
+  voucherCode?: string // server tu kiem tra lai va tu tinh so tien giam
+  paymentMethod: 'COD' | 'VNPAY'
 }
 
-export async function previewOrder(body: { deliveryLat: number; deliveryLng: number }): Promise<PriceBreakdown> {
+// Ket qua dat hang: chi tiet don + link sang trang thanh toan VNPay (COD thi null)
+export interface CreatedOrder extends OrderDetail {
+  paymentUrl: string | null
+}
+
+export async function previewOrder(body: {
+  deliveryLat: number
+  deliveryLng: number
+  voucherCode?: string
+}): Promise<PriceBreakdown> {
   const res = await api.post<PriceBreakdown>('/orders/preview', body)
   return res.data
 }
 
-export async function createOrder(body: CreateOrderBody): Promise<OrderDetail> {
-  const res = await api.post<OrderDetail>('/orders', body)
+export async function createOrder(body: CreateOrderBody): Promise<CreatedOrder> {
+  const res = await api.post<CreatedOrder>('/orders', body)
   return res.data
 }
 

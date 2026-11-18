@@ -37,7 +37,14 @@ export default function CustomerLayout() {
             )}
             {user ? (
               <>
-                <span className="font-medium text-gray-800">{user.fullName}</span>
+                {/* Khach bam vao ten de vao so dia chi */}
+                {isCustomer ? (
+                  <Link to="/profile/addresses" className="font-medium text-gray-800 hover:text-orange-600">
+                    👤 {user.fullName}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-gray-800">{user.fullName}</span>
+                )}
                 <button onClick={handleLogout} className="rounded border px-3 py-1 hover:bg-gray-100">
                   Đăng xuất
                 </button>

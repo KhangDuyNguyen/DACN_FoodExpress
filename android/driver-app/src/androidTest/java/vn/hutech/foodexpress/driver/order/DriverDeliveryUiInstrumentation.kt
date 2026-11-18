@@ -70,11 +70,11 @@ class DriverDeliveryUiInstrumentation : Instrumentation() {
                 }
                 await { model!!.state.value.verified && nodes().any { it.contentDescription?.toString() == marker } && text("FIXTURE-5D-950501") != null }
             }
-            test("PREPARING has pickup action, real fixture data and four-step progress") {
+            test("PREPARING waits for the merchant and shows four-step progress") {
                 render("PREPARING")
-                check(text("Nhà hàng đang chuẩn bị món") != null)
-                check(text("Chuẩn bị") != null && text("Đã lấy") != null && text("Đang giao") != null && text("Hoàn thành") != null)
-                check(button("Đã lấy món")?.isEnabled == true)
+                check(text("Đang chờ quán") != null)
+                check(text("Chuẩn bị") != null && text("Sẵn sàng") != null && text("Đang giao") != null && text("Hoàn thành") != null)
+                check(button("Đã lấy món") == null)
                 runOnMainSync { check(!WindowCompat.getInsetsController(main.window, main.window.decorView).isAppearanceLightStatusBars) }
                 capture("01-preparing.png")
             }
@@ -87,7 +87,7 @@ class DriverDeliveryUiInstrumentation : Instrumentation() {
                 check(maps == listOf(OrderDirectionsTarget.RESTAURANT, OrderDirectionsTarget.CUSTOMER))
                 reveal("Thông tin món ăn chưa khả dụng.")
                 check(text("Thông tin thanh toán chưa khả dụng.") != null)
-                check(button("Đã lấy món")?.isVisibleToUser == true && source.commands.isEmpty())
+                check(button("Đã lấy món") == null && source.commands.isEmpty())
                 capture("08-detail-scrolled.png")
             }
             test("READY_FOR_PICKUP keeps pickup enabled without an invented wait") {
@@ -108,26 +108,21 @@ class DriverDeliveryUiInstrumentation : Instrumentation() {
                 try {
                     await { model!!.state.value.deliverySending && button("Đã lấy món")?.isEnabled == false }
                     check(source.commands.size == 1)
-                    runOnMainSync { model!!.changeDeliveryStatus("PICKED_UP") }
+                    runOnMainSync { model!!.changeDeliveryStatus("DELIVERING") }
                     check(source.commands.size == 1)
                 } finally { runOnMainSync { source.gate?.complete(Unit) } }
-                await { text("Bắt đầu giao hàng") != null && model!!.state.value.verified }
-                check(source.commands == listOf("PICKED_UP")); capture("04-picked-up.png")
-            }
-            test("PICKED_UP advances only after explicit Begin delivery") {
-                check(model!!.state.value.order?.status == "PICKED_UP")
-                click("Bắt đầu giao hàng"); await { text("Đang giao hàng") != null && text("Xác nhận đã giao") != null }
-                check(source.commands == listOf("PICKED_UP", "DELIVERING")); capture("05-delivering.png")
+                await { text("Đang giao hàng") != null && text("Đã giao") != null && model!!.state.value.verified }
+                check(source.commands == listOf("DELIVERING")); capture("05-delivering.png")
             }
             test("Cancel delivered confirmation does not send DELIVERED") {
-                click("Xác nhận đã giao"); await { text("Xác nhận giao hàng thành công?") != null }
+                click("Đã giao"); await { text("Xác nhận giao hàng thành công?") != null }
                 checkDialogActions("Xác nhận giao thành công")
                 capture("06-confirm-delivered.png"); click("Hủy")
                 await { text("Xác nhận giao hàng thành công?") == null }
-                check(source.commands == listOf("PICKED_UP", "DELIVERING"))
+                check(source.commands == listOf("DELIVERING"))
             }
             test("Server confirms DELIVERED; null current order does not erase success or expose recipient") {
-                click("Xác nhận đã giao"); await { text("Xác nhận giao thành công") != null }; click("Xác nhận giao thành công")
+                click("Đã giao"); await { text("Xác nhận giao thành công") != null }; click("Xác nhận giao thành công")
                 await { text("Giao hàng thành công!") != null && model!!.state.value.verified }
                 check(model!!.state.value.order == null && source.current == null)
                 repeat(2) { runOnMainSync { model!!.refresh() }; await { !model!!.state.value.loading } }
@@ -143,9 +138,9 @@ class DriverDeliveryUiInstrumentation : Instrumentation() {
                 runOnMainSync { model!!.clear() }
                 check(model!!.state.value.order == null && model!!.state.value.completion == null)
             }
-            test("PLACED fallback offers synchronization and sends no illegal PATCH") {
-                render("PLACED"); check(text("Cập nhật lại đơn") != null)
-                check(button("Đã lấy món") == null && button("Bắt đầu giao hàng") == null)
+            test("PLACED waits for the merchant with no pickup action") {
+                render("PLACED"); check(text("Đang chờ quán") != null)
+                check(button("Đã lấy món") == null && button("Đã giao") == null)
                 check(source.commands.isEmpty())
             }
             test("Unknown GET hides recipient and prevents delivery commands") {
@@ -155,29 +150,30 @@ class DriverDeliveryUiInstrumentation : Instrumentation() {
                 check(text("Chưa xác minh được đơn hiện tại") != null && text("FIXTURE Receiver") == null)
                 check(button("Đã lấy món") == null && source.commands.isEmpty())
             }
-            test("Lost DELIVERED response stays uncertain until the user explicitly replays the same action") {
+            test("Lost DELIVERED response stays uncertain until exact history evidence arrives") {
                 render("DELIVERING"); source.loseResponse = true
-                click("Xác nhận đã giao"); await { text("Xác nhận giao thành công") != null }; click("Xác nhận giao thành công")
+                click("Đã giao"); await { text("Xác nhận giao thành công") != null }; click("Xác nhận giao thành công")
                 await { model!!.state.value.deliveryPending != null && !model!!.state.value.deliverySending && !model!!.state.value.loading }
                 check(text("Giao hàng thành công!") == null && source.commands == listOf("DELIVERED"))
-                click("Gửi lại thao tác đã chọn"); await { text("Giao hàng thành công!") != null }
-                check(source.commands == listOf("DELIVERED", "DELIVERED"))
+                runOnMainSync { source.history[950501] = source.now.plusSeconds(1) }
+                click("Kiểm tra lịch sử"); await { text("Giao hàng thành công!") != null }
+                check(source.commands == listOf("DELIVERED"))
             }
             test("Home acknowledgement removes the completion receipt") {
                 click("Quay về Trang chủ"); await { model!!.state.value.completion == null }; check(home == 1)
             }
-            test("Preparation polling retains a valid pickup confirmation without sending PATCH") {
-                render("PREPARING"); click("Đã lấy món")
-                await { text("Bạn đã thực sự nhận món từ nhà hàng chưa?") != null }
-                source.current = source.current!!.copy(status = "READY_FOR_PICKUP")
-                runOnMainSync { model!!.refresh() }
-                await { model!!.state.value.order?.status == "READY_FOR_PICKUP" && !model!!.state.value.loading }
-                check(text("Bạn đã thực sự nhận món từ nhà hàng chưa?") != null && source.commands.isEmpty())
-                click("Hủy")
+            test("Pickup becomes available after the merchant marks the order ready") {
+                render("PREPARING"); check(button("Đã lấy món") == null)
+                runOnMainSync {
+                    source.current = source.current!!.copy(status = "READY_FOR_PICKUP")
+                    model!!.refresh()
+                }
+                await { button("Đã lấy món")?.isEnabled == true }
+                check(source.commands.isEmpty())
             }
             test("Dashboard recovery action reopens an uncertain delivery and hides itself for a different owner") {
                 render("DELIVERING"); source.loseResponse = true
-                click("Xác nhận đã giao"); await { text("Xác nhận giao thành công") != null }; click("Xác nhận giao thành công")
+                click("Đã giao"); await { text("Xác nhận giao thành công") != null }; click("Xác nhận giao thành công")
                 await { model!!.state.value.deliveryPending != null && !model!!.state.value.deliverySending && !model!!.state.value.loading }
                 val showDetail = mutableStateOf(false)
                 runOnMainSync { main.setContent {
@@ -193,10 +189,11 @@ class DriverDeliveryUiInstrumentation : Instrumentation() {
                 await { button("Kiểm tra thao tác giao hàng") != null }
                 runOnMainSync { owner.value = 8 }; await { button("Kiểm tra thao tác giao hàng") == null }
                 runOnMainSync { owner.value = 7 }; await { button("Kiểm tra thao tác giao hàng") != null }
-                click("Kiểm tra thao tác giao hàng"); await { button("Gửi lại thao tác đã chọn") != null }
+                click("Kiểm tra thao tác giao hàng"); await { button("Kiểm tra lịch sử") != null }
                 check(source.commands == listOf("DELIVERED") && text("FIXTURE Receiver") == null)
-                click("Gửi lại thao tác đã chọn"); await { text("Giao hàng thành công!") != null }
-                check(source.commands == listOf("DELIVERED", "DELIVERED"))
+                runOnMainSync { source.history[950501] = source.now.plusSeconds(1) }
+                click("Kiểm tra lịch sử"); await { text("Giao hàng thành công!") != null }
+                check(source.commands == listOf("DELIVERED"))
             }
             test("Detail status-bar appearance is local and restores after leaving the screen") {
                 runOnMainSync { main.setContent { FoodExpressTheme { Surface { androidx.compose.material3.Text("FIXTURE detail closed") } } } }
@@ -274,11 +271,13 @@ class DriverDeliveryUiInstrumentation : Instrumentation() {
         var loseResponse = false
         val commands = mutableListOf<String>()
         override suspend fun load(): CurrentOrderResult = failure ?: CurrentOrderResult.Loaded(current, now)
+        val history = mutableMapOf<Long, LocalDateTime>()
+        override suspend fun findDeliveredAt(orderId: Long) = history[orderId]
         override suspend fun changeStatus(orderId: Long, target: String): DriverDeliveryResult {
             commands.add(target); gate?.await(); gate = null
             current = if (target == "DELIVERED") null else current?.copy(status = target, updatedAt = now.plusSeconds(1))
             if (loseResponse) { loseResponse = false; return DriverDeliveryResult.Uncertain("FIXTURE mất phản hồi; chưa rõ kết quả.") }
-            return DriverDeliveryResult.Updated(DriverDeliveryStatus(orderId, target, now.plusSeconds(1),
+            return DriverDeliveryResult.Updated(DriverDeliveryStatus(orderId, target,
                 if (target == "DELIVERED") now.plusSeconds(1) else null))
         }
     }

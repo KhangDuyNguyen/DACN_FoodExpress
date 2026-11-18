@@ -7,6 +7,7 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import vn.hutech.fooddelivery.cart.CartLine;
+import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderHistoryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderItemResponse;
 import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
@@ -14,6 +15,8 @@ import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -64,13 +67,16 @@ public class OrderRepository {
 
     // ----- Ghi don -----
 
-    /** Them 1 don trang thai PLACED, tra ve id. Trung ma don (cot code UNIQUE) thi nem DuplicateKeyException. */
+    /**
+     * Them 1 don (PLACED voi COD, PENDING_PAYMENT voi VNPay), tra ve id.
+     * Trung ma don (cot code UNIQUE) thi nem DuplicateKeyException.
+     */
     public long insertOrder(NewOrder order) {
         String sql = """
                 INSERT INTO orders (code, customer_id, restaurant_id, status,
                                     receiver_name, receiver_phone, delivery_address, delivery_lat, delivery_lng, note,
                                     subtotal, delivery_fee, discount_amount, total_amount, payment_method, distance_km)
-                VALUES (:code, :customerId, :restaurantId, 'PLACED',
+                VALUES (:code, :customerId, :restaurantId, :status,
                         :receiverName, :receiverPhone, :deliveryAddress, :deliveryLat, :deliveryLng, :note,
                         :subtotal, :deliveryFee, :discountAmount, :totalAmount, :paymentMethod, :distanceKm)
                 """;
@@ -78,6 +84,7 @@ public class OrderRepository {
                 .addValue("code", order.code())
                 .addValue("customerId", order.customerId())
                 .addValue("restaurantId", order.restaurantId())
+                .addValue("status", order.status())
                 .addValue("receiverName", order.receiverName())
                 .addValue("receiverPhone", order.receiverPhone())
                 .addValue("deliveryAddress", order.deliveryAddress())
@@ -132,10 +139,14 @@ public class OrderRepository {
                        r.name AS restaurant_name, r.phone AS restaurant_phone, r.address AS restaurant_address,
                        o.status, o.receiver_name, o.receiver_phone, o.delivery_address, o.note,
                        o.subtotal, o.delivery_fee, o.discount_amount, o.total_amount, o.payment_method,
-                       o.distance_km, o.cancel_reason, o.created_at, o.accepted_at, o.delivered_at, o.cancelled_at
+                       o.distance_km, o.cancel_reason, o.created_at, o.accepted_at, o.delivered_at, o.cancelled_at,
+                       o.driver_id, du.full_name AS driver_name, du.phone AS driver_phone,
+                       d.vehicle_type, d.license_plate
                 FROM orders o
                 JOIN restaurants r ON r.id = o.restaurant_id
                 JOIN users u ON u.id = o.customer_id
+                LEFT JOIN drivers d ON d.id = o.driver_id
+                LEFT JOIN users du ON du.id = d.user_id
                 WHERE o.id = :id
                 """;
         return jdbc.query(sql, Map.of("id", orderId), (rs, i) -> new OrderRow(
@@ -162,8 +173,46 @@ public class OrderRepository {
                 toLocalDateTime(rs.getTimestamp("created_at")),
                 toLocalDateTime(rs.getTimestamp("accepted_at")),
                 toLocalDateTime(rs.getTimestamp("delivered_at")),
-                toLocalDateTime(rs.getTimestamp("cancelled_at"))
+                toLocalDateTime(rs.getTimestamp("cancelled_at")),
+                // getObject(..., Long.class) giu duoc NULL khi don chua co tai xe
+                rs.getObject("driver_id", Long.class),
+                rs.getString("driver_name"),
+                rs.getString("driver_phone"),
+                rs.getString("vehicle_type"),
+                rs.getString("license_plate")
         )).stream().findFirst();
+    }
+
+    /**
+     * Doc vai cot cua don VA KHOA dong do den het transaction (SELECT ... FOR UPDATE).
+     * Luc tai xe nhan don (code cua An) cung ghi vao dong nay, nen 2 ben phai cho nhau, khong chen ngang:
+     * vd khach bam huy dung luc tai xe bam nhan thi 1 trong 2 phai doi ben kia xong roi doc lai.
+     * Chi khoa bang orders (khong JOIN) de khong khoa lan sang users, restaurants. (Y tuong tu PR #18 cua An.)
+     */
+    public Optional<LockedOrder> lockForUpdate(long orderId) {
+        String sql = """
+                SELECT id, customer_id, restaurant_id, driver_id, status, delivery_fee
+                FROM orders WHERE id = :id
+                FOR UPDATE
+                """;
+        return jdbc.query(sql, Map.of("id", orderId), (rs, i) -> new LockedOrder(
+                rs.getLong("id"),
+                rs.getLong("customer_id"),
+                rs.getLong("restaurant_id"),
+                rs.getObject("driver_id", Long.class),
+                rs.getString("status"),
+                rs.getBigDecimal("delivery_fee")
+        )).stream().findFirst();
+    }
+
+    /** Vai cot cua don doc kem khoa dong (lockForUpdate). driverId null = chua co tai xe nhan. */
+    public record LockedOrder(long id, long customerId, long restaurantId, Long driverId, String status, BigDecimal deliveryFee) {
+    }
+
+    /** id tai xe (bang drivers cua module An) ung voi tai khoan users.id; chua dang ky tai xe thi rong. */
+    public Optional<Long> findDriverIdByUserId(long userId) {
+        return jdbc.queryForList("SELECT id FROM drivers WHERE user_id = :userId",
+                Map.of("userId", userId), Long.class).stream().findFirst();
     }
 
     public List<OrderItemResponse> findItems(long orderId) {
@@ -213,6 +262,7 @@ public class OrderRepository {
             rs.getInt("item_count"),
             rs.getString("receiver_name"),
             rs.getString("delivery_address"),
+            rs.getString("driver_name"),
             toLocalDateTime(rs.getTimestamp("created_at"))
     );
 
@@ -221,9 +271,11 @@ public class OrderRepository {
         String sql = """
                 SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name, o.status, o.total_amount,
                        (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
-                       o.receiver_name, o.delivery_address, o.created_at
+                       o.receiver_name, o.delivery_address, o.created_at, du.full_name AS driver_name
                 FROM orders o
                 JOIN restaurants r ON r.id = o.restaurant_id
+                LEFT JOIN drivers d ON d.id = o.driver_id
+                LEFT JOIN users du ON du.id = d.user_id
                 WHERE o.customer_id = :customerId
                   AND (:status IS NULL OR o.status = :status)
                 ORDER BY o.created_at DESC, o.id DESC
@@ -259,13 +311,19 @@ public class OrderRepository {
         String sql = """
                 SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name, o.status, o.total_amount,
                        (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
-                       o.receiver_name, o.delivery_address, o.created_at
+                       o.receiver_name, o.delivery_address, o.created_at, du.full_name AS driver_name
                 FROM orders o
                 JOIN restaurants r ON r.id = o.restaurant_id
                 JOIN merchants m ON m.id = r.merchant_id
+                LEFT JOIN drivers d ON d.id = o.driver_id
+                LEFT JOIN users du ON du.id = d.user_id
                 WHERE m.owner_user_id = :ownerUserId
                   AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
                   AND (:status IS NULL OR o.status = :status)
+                  -- Quan chi thay don COD hoac don VNPay DA tra tien (don chua tra tien quan chua tung nhan)
+                  AND (o.payment_method = 'COD'
+                       OR EXISTS (SELECT 1 FROM payments p
+                                  WHERE p.order_id = o.id AND p.status IN ('SUCCESS', 'REFUNDED')))
                 ORDER BY o.created_at DESC, o.id DESC
                 LIMIT :limit OFFSET :offset
                 """;
@@ -287,6 +345,10 @@ public class OrderRepository {
                 WHERE m.owner_user_id = :ownerUserId
                   AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
                   AND (:status IS NULL OR o.status = :status)
+                  -- Quan chi thay don COD hoac don VNPay DA tra tien (don chua tra tien quan chua tung nhan)
+                  AND (o.payment_method = 'COD'
+                       OR EXISTS (SELECT 1 FROM payments p
+                                  WHERE p.order_id = o.id AND p.status IN ('SUCCESS', 'REFUNDED')))
                 """;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("ownerUserId", ownerUserId)
@@ -309,28 +371,134 @@ public class OrderRepository {
         return count != null && count > 0;
     }
 
+    /** Cung dieu kien voi danh sach don cua quan: don COD, hoac don VNPay da tra tien. */
+    public boolean isVisibleToMerchant(long orderId) {
+        String sql = """
+                SELECT COUNT(*) FROM orders o
+                WHERE o.id = :orderId
+                  AND (o.payment_method = 'COD'
+                       OR EXISTS (SELECT 1 FROM payments p
+                                  WHERE p.order_id = o.id AND p.status IN ('SUCCESS', 'REFUNDED')))
+                """;
+        Long count = jdbc.queryForObject(sql, Map.of("orderId", orderId), Long.class);
+        return count != null && count > 0;
+    }
+
+    /** Kiểm tra nhà hàng có tồn tại trong hệ thống không. */
+    public boolean restaurantExists(long restaurantId) {
+        String sql = "SELECT COUNT(*) FROM restaurants WHERE id = :restaurantId";
+        Long count = jdbc.queryForObject(sql, Map.of("restaurantId", restaurantId), Long.class);
+        return count != null && count > 0;
+    }
+
+    /**
+     * Danh sách đơn của cửa hàng kèm danh sách món ăn, SĐT nhận hàng và ghi chú đơn hàng.
+     * Dùng truy vấn batch order_items theo danh sách orderIds để tránh N+1 query.
+     */
+    public List<MerchantOrderSummaryResponse> findMerchantSummariesByOwner(long ownerUserId, Long restaurantId,
+                                                                           String status, int limit, long offset) {
+        String sql = """
+                SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name, o.status, o.total_amount,
+                       (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
+                       o.receiver_name, o.receiver_phone, o.delivery_address, o.note, o.payment_method, o.created_at,
+                       du.full_name AS driver_name
+                FROM orders o
+                JOIN restaurants r ON r.id = o.restaurant_id
+                JOIN merchants m ON m.id = r.merchant_id
+                LEFT JOIN drivers d ON d.id = o.driver_id
+                LEFT JOIN users du ON du.id = d.user_id
+                WHERE m.owner_user_id = :ownerUserId
+                  AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
+                  AND (:status IS NULL OR o.status = :status)
+                  -- Quan chi thay don COD hoac don VNPay DA tra tien (don chua tra tien quan chua tung nhan)
+                  AND (o.payment_method = 'COD'
+                       OR EXISTS (SELECT 1 FROM payments p
+                                  WHERE p.order_id = o.id AND p.status IN ('SUCCESS', 'REFUNDED')))
+                ORDER BY o.created_at DESC, o.id DESC
+                LIMIT :limit OFFSET :offset
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("ownerUserId", ownerUserId)
+                .addValue("restaurantId", restaurantId)
+                .addValue("status", status)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+
+        List<MerchantOrderSummaryResponse> baseRows = jdbc.query(sql, params, (rs, i) -> new MerchantOrderSummaryResponse(
+                rs.getLong("id"),
+                rs.getString("code"),
+                rs.getLong("restaurant_id"),
+                rs.getString("restaurant_name"),
+                rs.getString("status"),
+                rs.getBigDecimal("total_amount"),
+                rs.getInt("item_count"),
+                rs.getString("receiver_name"),
+                rs.getString("receiver_phone"),
+                rs.getString("delivery_address"),
+                rs.getString("note"),
+                rs.getString("payment_method"),
+                List.of(),
+                toLocalDateTime(rs.getTimestamp("created_at")),
+                rs.getString("driver_name")
+        ));
+
+        if (baseRows.isEmpty()) {
+            return baseRows;
+        }
+
+        List<Long> orderIds = baseRows.stream().map(MerchantOrderSummaryResponse::id).toList();
+        Map<Long, List<OrderItemResponse>> itemsByOrderId = findItemsByOrderIds(orderIds);
+
+        return baseRows.stream()
+                .map(row -> new MerchantOrderSummaryResponse(
+                        row.id(),
+                        row.code(),
+                        row.restaurantId(),
+                        row.restaurantName(),
+                        row.status(),
+                        row.totalAmount(),
+                        row.itemCount(),
+                        row.receiverName(),
+                        row.receiverPhone(),
+                        row.deliveryAddress(),
+                        row.note(),
+                        row.paymentMethod(),
+                        itemsByOrderId.getOrDefault(row.id(), List.of()),
+                        row.createdAt(),
+                        row.driverName()
+                ))
+                .toList();
+    }
+
+    public Map<Long, List<OrderItemResponse>> findItemsByOrderIds(List<Long> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return Map.of();
+        }
+        String sql = """
+                SELECT order_id, menu_item_id, item_name, unit_price, quantity, note
+                FROM order_items
+                WHERE order_id IN (:orderIds)
+                ORDER BY id
+                """;
+        Map<Long, List<OrderItemResponse>> result = new LinkedHashMap<>();
+        jdbc.query(sql, Map.of("orderIds", orderIds), rs -> {
+            long orderId = rs.getLong("order_id");
+            BigDecimal unitPrice = rs.getBigDecimal("unit_price");
+            int quantity = rs.getInt("quantity");
+            OrderItemResponse item = new OrderItemResponse(
+                    rs.getObject("menu_item_id", Long.class),
+                    rs.getString("item_name"),
+                    unitPrice,
+                    quantity,
+                    rs.getString("note"),
+                    unitPrice.multiply(BigDecimal.valueOf(quantity))
+            );
+            result.computeIfAbsent(orderId, k -> new ArrayList<>()).add(item);
+        });
+        return result;
+    }
+
     // ----- Doi trang thai (Module D) -----
-
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Khoa rieng Order truoc kiem tra quyen; khong khoa JOIN User/Restaurant.
-    public Optional<LockedOrder> lockOrder(long orderId) {
-        return jdbc.query("""
-                SELECT id, customer_id, restaurant_id, status FROM orders WHERE id = :id FOR UPDATE
-                """, Map.of("id", orderId), (rs, i) -> new LockedOrder(rs.getLong("id"),
-                rs.getLong("customer_id"), rs.getLong("restaurant_id"), rs.getString("status")))
-                .stream().findFirst();
-    }
-
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Goi sau Order lock de serial voi Accept, ke ca caller co snapshot cu.
-    public boolean hasAcceptedAssignmentForUpdate(long orderId) {
-        return !jdbc.query("""
-                SELECT id FROM order_assignments
-                WHERE order_id = :id AND status = 'ACCEPTED' ORDER BY id FOR UPDATE
-                """, Map.of("id", orderId), (rs, i) -> rs.getLong("id")).isEmpty();
-    }
-
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Snapshot toi thieu tu locking read, giu nguyen OrderRow/response cu.
-    public record LockedOrder(long id, long customerId, long restaurantId, String status) {
-    }
 
     /**
      * Doi trang thai CHI KHI don van dang o fromStatus (dieu kien "AND status = :fromStatus").

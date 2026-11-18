@@ -44,14 +44,15 @@ class SavedStateHandle(private val values: MutableMap<String, Any?> = mutableMap
 
     java = str(Path(os.environ["JAVA_HOME"]) / "bin/java.exe") if os.name == "nt" and os.environ.get("JAVA_HOME") else shutil.which("java")
     runtime = [kotlin("kotlin-stdlib"), jar("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", "1.10.2"),
-               jar("com.squareup.retrofit2", "retrofit", "3.0.0"), jar("com.squareup.okhttp3", "okhttp", "4.12.0"),
-               jar("com.squareup.okio", "okio-jvm", "3.15.0"), jar("com.squareup.retrofit2", "converter-gson", "3.0.0"),
-               jar("com.google.code.gson", "gson", "2.13.1")]
+               jar("com.squareup.retrofit2", "retrofit", "2.11.0"), jar("com.squareup.okhttp3", "okhttp", "3.14.9"),
+               jar("com.squareup.okio", "okio", "1.17.2"), jar("com.squareup.retrofit2", "converter-gson", "2.11.0"),
+               jar("com.google.code.gson", "gson", "2.10.1")]
     compiler = [kotlin(n) for n in ("kotlin-compiler-embeddable", "kotlin-stdlib", "kotlin-script-runtime", "kotlin-daemon-embeddable")]
     compiler += [jar("org.jetbrains.kotlin", "kotlin-reflect", "1.6.10"), runtime[1], jar("org.jetbrains", "annotations", "23.0.0")]
     inputs = [base / p for p in ("data/offer/DriverOfferApi.kt", "data/offer/DriverOfferRepository.kt",
                                 "ui/offer/OfferDeadline.kt", "ui/offer/DriverOffersViewModel.kt",
                                 "data/order/DriverOrderApi.kt", "data/order/DriverOrderRepository.kt",
+                                "data/report/DriverReportsApi.kt", "data/report/DriverReportsRepository.kt",
                                 "ui/order/DriverCurrentOrderViewModel.kt")]
     for name, value in fixtures.items():
         path = out / name

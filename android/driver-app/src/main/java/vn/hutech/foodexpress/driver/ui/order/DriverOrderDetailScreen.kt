@@ -79,13 +79,15 @@ fun DriverOrderDetailScreen(state: DriverCurrentOrderUiState, authenticatedUserI
                     }
                     val pending = visible.deliveryPending
                     if (pending != null && !visible.deliverySending) {
-                        Text("Chưa rõ kết quả thao tác. Gửi lại chỉ xác minh hoặc thực hiện đúng thao tác đã chọn, không bỏ qua bước.", color = DetailMuted)
+                        val checkingHistory = pending.target == "DELIVERED"
+                        Text(if (checkingHistory) "Đang chờ xác minh đơn đã giao trong Lịch sử."
+                            else "Chưa rõ kết quả xác nhận lấy món.", color = DetailMuted)
                         OutlinedButton(onClick = { onRetryDelivery?.invoke() }, modifier = Modifier.fillMaxWidth(),
-                            enabled = onRetryDelivery != null && !visible.loading) { Text("Gửi lại thao tác đã chọn") }
+                            enabled = onRetryDelivery != null && !visible.loading) {
+                            Text(if (checkingHistory) "Kiểm tra lịch sử" else "Gửi lại xác nhận lấy món")
+                        }
                     } else if (target != null) {
-                        Button(onClick = {
-                            if (target == "DELIVERING") onDelivery?.invoke(target) else confirm = target
-                        }, modifier = Modifier.fillMaxWidth(), enabled = !visible.deliverySending && onDelivery != null,
+                        Button(onClick = { confirm = target }, modifier = Modifier.fillMaxWidth(), enabled = !visible.deliverySending && onDelivery != null,
                             shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = DetailRed)) {
                             Text(deliveryActionLabel(target), fontWeight = FontWeight.Bold)
                         }
@@ -136,10 +138,6 @@ fun DriverOrderDetailScreen(state: DriverCurrentOrderUiState, authenticatedUserI
                         }
                     }
                     DeliveryProgress(order.status)
-                    if (order.status == "PLACED") DetailCard {
-                        Text("Đơn chưa ở bước có thể xác nhận lấy món. Vui lòng cập nhật lại trạng thái.", color = DetailMuted)
-                        OutlinedButton(onClick = onRetry, enabled = !visible.loading) { Text("Cập nhật lại đơn") }
-                    }
                     Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(16.dp)) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             DetailIcon(DetailSymbol.TIME, Modifier.padding(top = 2.dp))
@@ -171,7 +169,7 @@ fun DriverOrderDetailScreen(state: DriverCurrentOrderUiState, authenticatedUserI
                             mapsMessage = onDirections(OrderDirectionsTarget.CUSTOMER).message
                         }
                     } }
-                    if (order.status in setOf("PICKED_UP", "DELIVERING")) { destination(); pickup() }
+                    if (order.status == "DELIVERING") { destination(); pickup() }
                     else { pickup(); destination() }
                     DetailCard {
                         DetailTitle("Thanh toán đơn hàng")
@@ -202,9 +200,9 @@ fun DriverOrderDetailScreen(state: DriverCurrentOrderUiState, authenticatedUserI
     confirm?.let { action ->
         AlertDialog(onDismissRequest = { confirm = null }, title = {
             DetailStatusBar()
-            Text(if (action == "PICKED_UP") "Bạn đã thực sự nhận món từ nhà hàng chưa?" else "Xác nhận giao hàng thành công?")
+            Text(if (action == "DELIVERING") "Bạn đã thực sự nhận món từ nhà hàng chưa?" else "Xác nhận giao hàng thành công?")
         }, text = {
-            Text(if (action == "PICKED_UP") "Chỉ xác nhận sau khi bạn đã nhận món thực tế từ nhà hàng."
+            Text(if (action == "DELIVERING") "Chỉ xác nhận sau khi bạn đã nhận món thực tế từ nhà hàng."
                 else "Chỉ xác nhận sau khi bạn đã bàn giao đơn hàng cho người nhận.")
         }, confirmButton = {
             // Fixed, shared action order at every font scale; no automatic row/column reversal.
@@ -213,7 +211,7 @@ fun DriverOrderDetailScreen(state: DriverCurrentOrderUiState, authenticatedUserI
                     confirm = null
                     if (!visible.deliverySending && order != null && nextDeliveryStatus(order.status) == action) onDelivery?.invoke(action)
                 }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = DetailRed)) {
-                    Text(if (action == "PICKED_UP") "Xác nhận đã lấy món" else "Xác nhận giao thành công")
+                    Text(if (action == "DELIVERING") "Xác nhận đã lấy món" else "Xác nhận giao thành công")
                 }
                 OutlinedButton(onClick = { confirm = null }, modifier = Modifier.fillMaxWidth()) { Text("Hủy", color = DetailRed) }
             }
@@ -222,41 +220,43 @@ fun DriverOrderDetailScreen(state: DriverCurrentOrderUiState, authenticatedUserI
 }
 
 private fun deliveryActionLabel(target: String) = when (target) {
-    "PICKED_UP" -> "Đã lấy món"
-    "DELIVERING" -> "Bắt đầu giao hàng"
-    else -> "Xác nhận đã giao"
+    "DELIVERING" -> "Đã lấy món"
+    else -> "Đã giao"
 }
 
 internal fun deliveryStatusLabel(status: String) = when (status) {
-    "PREPARING" -> "Nhà hàng đang chuẩn bị món"
+    "PLACED", "PREPARING" -> "Đang chờ quán"
     "READY_FOR_PICKUP" -> "Món đã sẵn sàng"
-    "PICKED_UP" -> "Đã lấy món"
     "DELIVERING" -> "Đang giao hàng"
     else -> status
 }
 
 private fun deliveryStatusColor(status: String) = when (status) {
-    "PREPARING" -> Color(0xFF8A5700)
+    "PLACED", "PREPARING" -> Color(0xFF8A5700)
     "READY_FOR_PICKUP" -> Color(0xFF087D32)
-    "PICKED_UP" -> Color(0xFF175DA8)
     "DELIVERING" -> Color(0xFF7130A3)
     else -> DetailMuted
 }
 private fun deliveryBadgeBackground(status: String) = when (status) {
-    "PREPARING" -> Color(0xFFFFF1D6)
+    "PLACED", "PREPARING" -> Color(0xFFFFF1D6)
     "READY_FOR_PICKUP" -> Color(0xFFE9F8ED)
-    "PICKED_UP" -> Color(0xFFE9F2FF)
     "DELIVERING" -> Color(0xFFF3EAFE)
     else -> DetailPink
 }
 
 @Composable
 private fun DeliveryProgress(status: String) {
-    val step = when (status) { "PREPARING", "READY_FOR_PICKUP" -> 0; "PICKED_UP" -> 1; "DELIVERING" -> 2; "DELIVERED" -> 3; else -> -1 }
+    val step = when (status) {
+        "PLACED", "PREPARING" -> 0
+        "READY_FOR_PICKUP" -> 1
+        "DELIVERING" -> 2
+        "DELIVERED" -> 3
+        else -> -1
+    }
     DetailCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            listOf("Chuẩn bị", "Đã lấy", "Đang giao", "Hoàn thành").forEachIndexed { index, label ->
-                val done = index < step || (status == "READY_FOR_PICKUP" && index == 0) || status == "DELIVERED"
+            listOf("Chuẩn bị", "Sẵn sàng", "Đang giao", "Hoàn thành").forEachIndexed { index, label ->
+                val done = index < step || status == "DELIVERED"
                 val color = if (done) Color(0xFF14853D) else if (index == step) deliveryStatusColor(status) else Color(0xFF697586)
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {

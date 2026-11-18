@@ -19,6 +19,7 @@ import java.util.Map;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -116,26 +117,36 @@ class OrderManagementIntegrationTest {
     // ----- Luong trang thai -----
 
     @Test
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Merchant nhan mon nhung khong con giao/hoan thanh thay tai xe.
-    void merchantPreparesOrderButCannotPerformDriverSteps() throws Exception {
+    void merchantMovesOrderThroughAllStepsWhenNoDriver() throws Exception {
         String customer = login("0911000001");
         String merchant = login("0922000001");
+        // Test nay khong co tai xe online nao, nen don khong co tai xe va chu quan duoc bam ca buoc giao
         long orderId = placeOrder(customer, Q1, "Cơm sườn nướng");
 
         changeStatus(merchant, orderId, "{\"status\":\"PREPARING\"}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PREPARING"))
                 .andExpect(jsonPath("$.acceptedAt").value(notNullValue()));
+        // Tuan 4: phai bao "mon da xong" truoc khi giao
         changeStatus(merchant, orderId, "{\"status\":\"DELIVERING\"}")
                 .andExpect(status().isConflict());
-        changeStatus(merchant, orderId, "{\"status\":\"DELIVERED\"}")
-                .andExpect(status().isConflict());
-        mockMvc.perform(get("/api/orders/{id}", orderId).header("Authorization", customer))
+        changeStatus(merchant, orderId, "{\"status\":\"READY_FOR_PICKUP\"}")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("PREPARING"))
-                .andExpect(jsonPath("$.history.length()").value(2))
+                .andExpect(jsonPath("$.status").value("READY_FOR_PICKUP"))
+                .andExpect(jsonPath("$.driver").value(nullValue()));
+        changeStatus(merchant, orderId, "{\"status\":\"DELIVERING\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DELIVERING"));
+        changeStatus(merchant, orderId, "{\"status\":\"DELIVERED\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DELIVERED"))
+                .andExpect(jsonPath("$.deliveredAt").value(notNullValue()))
+                .andExpect(jsonPath("$.history.length()").value(5))
                 .andExpect(jsonPath("$.history[0].status").value("PLACED"))
-                .andExpect(jsonPath("$.history[1].status").value("PREPARING"));
+                .andExpect(jsonPath("$.history[1].status").value("PREPARING"))
+                .andExpect(jsonPath("$.history[2].status").value("READY_FOR_PICKUP"))
+                .andExpect(jsonPath("$.history[3].status").value("DELIVERING"))
+                .andExpect(jsonPath("$.history[4].status").value("DELIVERED"));
 
         // Lich su ghi dung nguoi doi: buoc nhan don do chu quan 0922000001 bam
         assertEquals("0922000001", jdbc.queryForObject("""
@@ -143,10 +154,10 @@ class OrderManagementIntegrationTest {
                 WHERE h.order_id = :orderId AND h.status = 'PREPARING'
                 """, Map.of("orderId", orderId), String.class));
 
-        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Trang thai chi tien tiep khi tai xe thuc hien luong giao.
+        // Khach thay don da hoan thanh
         mockMvc.perform(get("/api/orders/{id}", orderId).header("Authorization", customer))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("PREPARING"));
+                .andExpect(jsonPath("$.status").value("DELIVERED"));
     }
 
     @Test
@@ -161,10 +172,9 @@ class OrderManagementIntegrationTest {
                 .andExpect(status().isConflict());
 
         changeStatus(merchant, orderId, "{\"status\":\"PREPARING\"}").andExpect(status().isOk());
-        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]:
-        // Xac nhan PREPARING lap lai la no-op, lich su van chi co hai dong.
+        // Da nhan don thi khong nhan lai lan nua
         changeStatus(merchant, orderId, "{\"status\":\"PREPARING\"}")
-                .andExpect(status().isOk());
+                .andExpect(status().isConflict());
 
         // Trang thai ngoai danh sach cho phep -> 400
         changeStatus(merchant, orderId, "{\"status\":\"PICKED_UP\"}")

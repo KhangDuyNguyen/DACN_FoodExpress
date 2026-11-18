@@ -5,6 +5,8 @@ import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 import vn.hutech.foodexpress.driver.data.auth.DriverAuthRepository
+import vn.hutech.foodexpress.driver.data.report.DriverReportsSource
+import vn.hutech.foodexpress.driver.data.report.ReportsResult
 
 data class DriverCurrentOrder(
     val orderId: Long, val orderCode: String, val status: String,
@@ -21,7 +23,7 @@ sealed interface CurrentOrderResult {
     data class Failed(val message: String) : CurrentOrderResult
 }
 data class DriverDeliveryStatus(val orderId: Long, val status: String,
-    val updatedAt: LocalDateTime, val deliveredAt: LocalDateTime?)
+    val deliveredAt: LocalDateTime?)
 
 sealed interface DriverDeliveryResult {
     data class Updated(val value: DriverDeliveryStatus) : DriverDeliveryResult
@@ -33,6 +35,7 @@ sealed interface DriverDeliveryResult {
 
 fun interface DriverCurrentOrderSource {
     suspend fun load(): CurrentOrderResult
+    suspend fun findDeliveredAt(orderId: Long): LocalDateTime? = null
     // Read-only adapters remain usable; the production Repository implements the command explicitly.
     suspend fun changeStatus(orderId: Long, target: String): DriverDeliveryResult =
         DriverDeliveryResult.Rejected("Chức năng cập nhật chưa sẵn sàng. Vui lòng thử lại.")
@@ -41,9 +44,10 @@ fun interface DriverCurrentOrderSource {
 class DriverOrderRepository @Inject constructor(
     private val api: DriverOrderApi,
     private val auth: DriverAuthRepository,
+    private val reports: DriverReportsSource,
 ) : DriverCurrentOrderSource {
     override suspend fun changeStatus(orderId: Long, target: String): DriverDeliveryResult {
-        if (orderId <= 0 || target !in setOf("PICKED_UP", "DELIVERING", "DELIVERED")) {
+        if (orderId <= 0 || target !in setOf("DELIVERING", "DELIVERED")) {
             return DriverDeliveryResult.Rejected("Thao tác giao hàng không hợp lệ. Vui lòng cập nhật lại đơn.")
         }
         // Capture once: a delayed command must never acquire the next account's token.
@@ -63,18 +67,28 @@ class DriverOrderRepository @Inject constructor(
                     }
                 }
                 val body = requireNotNull(response.body())
-                require(body.orderId == orderId && body.status == target)
-                val updatedAt = LocalDateTime.parse(requireNotNull(body.updatedAt))
-                require(body.deliveredAt != MISSING_NULLABLE_FIELD)
+                require(body.id == orderId && body.status == target)
                 val deliveredAt = body.deliveredAt?.let(LocalDateTime::parse)
                 require((target == "DELIVERED") == (deliveredAt != null))
-                DriverDeliveryResult.Updated(DriverDeliveryStatus(orderId, target, updatedAt, deliveredAt))
+                DriverDeliveryResult.Updated(DriverDeliveryStatus(orderId, target, deliveredAt))
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 DriverDeliveryResult.Uncertain("Chưa xác định được kết quả: kết nối gián đoạn hoặc phản hồi chưa hợp lệ. Vui lòng kiểm tra lại.")
             }
         } ?: DriverDeliveryResult.Uncertain("Chưa nhận được kết quả trong thời gian chờ. Đơn có thể đã được cập nhật; hãy kiểm tra lại.")
+    }
+
+    override suspend fun findDeliveredAt(orderId: Long): LocalDateTime? = withTimeoutOrNull(12_000) {
+        var page = 0
+        do {
+            val history = (reports.history(page, 50) as? ReportsResult.Loaded)?.value
+                ?: return@withTimeoutOrNull null
+            val match = history.items.firstOrNull { it.orderId == orderId }
+            if (match != null) return@withTimeoutOrNull match.deliveredAt
+            page++
+        } while (page < history.totalPages)
+        null
     }
 
     override suspend fun load(): CurrentOrderResult {
@@ -109,7 +123,7 @@ class DriverOrderRepository @Inject constructor(
             require(it.isFinite() && it in (if (latitude) -90.0..90.0 else -180.0..180.0))
         }
         val activeStatus = text(status)
-        require(activeStatus in setOf("PENDING_PAYMENT", "PLACED", "ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "DELIVERING"))
+        require(activeStatus in setOf("PENDING_PAYMENT", "PLACED", "ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "DELIVERING"))
         require(restaurantPhone != MISSING_NULLABLE_FIELD && note != MISSING_NULLABLE_FIELD)
         return DriverCurrentOrder(id(orderId), text(orderCode), activeStatus,
             LocalDateTime.parse(text(createdAt)), LocalDateTime.parse(text(updatedAt)),

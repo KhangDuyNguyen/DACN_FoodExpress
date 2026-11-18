@@ -1,17 +1,40 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { getApiError } from '../../api/apiError'
-import { cancelMyOrder, fetchMyOrder, isFinished, statusLabel, type OrderStatus } from '../../api/orders'
+import {
+  cancelMyOrder,
+  fetchMyOrder,
+  isFinished,
+  statusLabel,
+  type OrderDetail,
+  type OrderStatus,
+} from '../../api/orders'
 import { STATUS_BADGE } from './orderStatusStyle'
 
 // TODO(an): them ban do vi tri tai xe khi don dang giao (phan theo doi don cua An)
 // TODO(diep/an): thay viec tu tai lai 10 giay bang WebSocket khi co realtime
 
-// Cac buoc cua 1 don binh thuong, theo thu tu
-const STEPS: OrderStatus[] = ['PLACED', 'PREPARING', 'DELIVERING', 'DELIVERED']
+// Cac buoc cua 1 don binh thuong, theo thu tu (tuan 4 them "Cho lay mon")
+const STEPS: OrderStatus[] = ['PLACED', 'PREPARING', 'READY_FOR_PICKUP', 'DELIVERING', 'DELIVERED']
+
+const VEHICLE_LABEL = { MOTORBIKE: 'Xe máy', BICYCLE: 'Xe đạp', CAR: 'Ô tô' }
+
+// Don chua co tai xe: dang giao hoac da giao ma khong co tai xe nghia la quan tu giao
+function noDriverText(status: OrderStatus): string {
+  if (status === 'CANCELLED') return 'Không có'
+  if (status === 'DELIVERING' || status === 'DELIVERED') return 'Quán tự giao'
+  return 'Chưa có tài xế nhận'
+}
 
 function vnd(amount: number) {
   return `${amount.toLocaleString('vi-VN')}đ`
+}
+
+// Cach thanh toan kem tinh trang tra tien. Don VNPay chi co buoc "Cho xac nhan" (PLACED) khi da tra tien.
+function paymentText(order: OrderDetail): string {
+  if (order.paymentMethod === 'COD') return 'COD'
+  const paid = order.history.some((h) => h.status === 'PLACED')
+  return paid ? 'VNPay · đã thanh toán' : 'VNPay · chưa thanh toán'
 }
 
 export default function OrderTracking() {
@@ -73,13 +96,17 @@ export default function OrderTracking() {
           </span>
         </div>
 
-        {/* Thanh tien trinh 4 buoc, hoac thong bao da huy */}
+        {/* Thanh tien trinh 5 buoc, hoac thong bao da huy / cho thanh toan */}
         {order.status === 'CANCELLED' ? (
           <p className="mt-4 rounded bg-gray-100 p-3 text-sm text-gray-700">
             Đơn đã hủy{order.cancelReason ? `: ${order.cancelReason}` : ''}
           </p>
+        ) : order.status === 'PENDING_PAYMENT' ? (
+          <p className="mt-4 rounded bg-yellow-50 p-3 text-sm text-yellow-800">
+            Đơn đang chờ thanh toán qua VNPay. Quán chỉ nhận đơn sau khi thanh toán thành công.
+          </p>
         ) : (
-          <ol className="mt-4 grid grid-cols-4 gap-2 text-center text-xs">
+          <ol className="mt-4 grid grid-cols-5 gap-2 text-center text-xs">
             {STEPS.map((step, index) => (
               <li key={step}>
                 <div className={`h-2 rounded-full ${index <= currentStep ? 'bg-orange-500' : 'bg-gray-200'}`} />
@@ -95,7 +122,11 @@ export default function OrderTracking() {
           <p className="mt-3 text-xs text-gray-400">Trang tự cập nhật mỗi 10 giây.</p>
         )}
 
-        {order.status === 'PLACED' && (
+        {/* Tai xe da nhan don thi khong huy duoc nua (server cung chan, tra 409) */}
+        {order.status === 'PLACED' && order.driver && (
+          <p className="mt-3 text-xs text-gray-500">Tài xế đã nhận giao đơn nên không thể hủy.</p>
+        )}
+        {order.status === 'PLACED' && !order.driver && (
           <button
             onClick={handleCancel}
             disabled={cancelMutation.isPending}
@@ -114,6 +145,18 @@ export default function OrderTracking() {
           <p className="font-medium text-gray-800">{order.restaurant.name}</p>
           <p className="text-gray-500">{order.restaurant.address}</p>
           {order.restaurant.phone && <p className="text-gray-500">📞 {order.restaurant.phone}</p>}
+          <p className="mt-3 font-medium text-gray-800">Tài xế</p>
+          {order.driver ? (
+            <p className="text-gray-600">
+              🛵 {order.driver.name} · {order.driver.phone}
+              <span className="block text-gray-500">
+                {VEHICLE_LABEL[order.driver.vehicleType]}
+                {order.driver.licensePlate && ` · ${order.driver.licensePlate}`}
+              </span>
+            </p>
+          ) : (
+            <p className="text-gray-500">{noDriverText(order.status)}</p>
+          )}
           <p className="mt-3 font-medium text-gray-800">Giao đến</p>
           <p className="text-gray-600">
             {order.receiverName} · {order.receiverPhone}
@@ -143,8 +186,14 @@ export default function OrderTracking() {
               <span className="text-gray-600">Phí giao</span>
               <span>{vnd(order.deliveryFee)}</span>
             </div>
+            {order.discountAmount > 0 && (
+              <div className="flex justify-between text-green-700">
+                <span>Giảm giá</span>
+                <span>−{vnd(order.discountAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold">
-              <span>Tổng cộng (COD)</span>
+              <span>Tổng cộng ({paymentText(order)})</span>
               <span className="text-orange-600">{vnd(order.totalAmount)}</span>
             </div>
           </div>

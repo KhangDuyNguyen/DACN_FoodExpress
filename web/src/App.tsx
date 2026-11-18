@@ -5,6 +5,7 @@ import CustomerLayout from './layouts/CustomerLayout'
 import MerchantLayout from './layouts/MerchantLayout'
 
 // Khách hàng
+import Addresses from './pages/customer/Addresses'
 import Cart from './pages/customer/Cart'
 import Checkout from './pages/customer/Checkout'
 import CustomerHome from './pages/customer/CustomerHome'
@@ -15,6 +16,7 @@ import OrderTracking from './pages/customer/OrderTracking'
 import Register from './pages/customer/Register'
 import RestaurantDetail from './pages/customer/RestaurantDetail'
 import RestaurantList from './pages/customer/RestaurantList'
+import VnPayReturn from './pages/customer/VnPayReturn'
 
 // Quản trị viên (Admin - Sầm Xuân Điệp)
 import AdminDriverApprovalPage from './pages/admin/AdminDriverApprovalPage'
@@ -31,6 +33,7 @@ import MerchantRevenuePage from './pages/merchant/MerchantRevenuePage'
 import MerchantSupportPage from './pages/merchant/MerchantSupportPage'
 import MerchantTopDishesPage from './pages/merchant/MerchantTopDishesPage'
 import MerchantVouchersPage from './pages/merchant/MerchantVouchersPage'
+import MerchantReviewsPage from './pages/merchant/MerchantReviewsPage'
 // Tuần 4 - Dưỡng
 import BranchSelector from './pages/merchant/BranchSelector'
 import RestaurantSettings from './pages/merchant/RestaurantSettings'
@@ -53,6 +56,8 @@ export default function App() {
           <Route path="orders" element={<MyOrders />} />
           <Route path="orders/:id" element={<OrderTracking />} />
           <Route path="orders/:id/success" element={<OrderSuccess />} />
+          <Route path="payment/vnpay-return" element={<VnPayReturn />} />
+          <Route path="profile/addresses" element={<Addresses />} />
         </Route>
       </Route>
 
@@ -72,6 +77,7 @@ export default function App() {
           <Route path="merchant/revenue" element={<MerchantRevenuePage />} />
           <Route path="merchant/top-dishes" element={<MerchantTopDishesPage />} />
           <Route path="merchant/support" element={<MerchantSupportPage />} />
+          <Route path="merchant/reviews" element={<MerchantReviewsPage />} />
         </Route>
       </Route>
 

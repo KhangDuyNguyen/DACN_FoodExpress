@@ -92,7 +92,7 @@ class CurrentOrderUiInstrumentation : Instrumentation() {
             val retries = AtomicInteger()
             runOnMainSync { main.setContent { FoodExpressTheme { Surface { DriverCurrentOrderCard(state.value, { retries.incrementAndGet() }) } } } }
             test("Card shows actual DTO fields, no invented amounts") {
-                await { text("Đơn FAKE-4B2-99301") != null && text("Trạng thái: Đã nhận đơn") != null }
+                await { text("Đơn FAKE-4B2-99301") != null && text("Trạng thái: Đang chờ quán") != null }
                 check(text("FAKE Restaurant") != null && text("FAKE Delivery") != null)
                 check(text("COD") == null && text("ETA") == null)
             }
@@ -664,7 +664,7 @@ class CurrentOrderUiInstrumentation : Instrumentation() {
             check(!toggle().isEnabled && requested == null)
             capture("active")
             reveal("Đơn ${order.orderCode}")
-            check(text("Trạng thái: Đã nhận đơn") != null && text("Trạng thái: PLACED") == null && text("Đang giao") == null)
+            check(text("Trạng thái: Đang chờ quán") != null && text("Trạng thái: PLACED") == null && text("Đang giao") == null)
             reveal(order.restaurantName)
             reveal(order.deliveryAddress)
             check(text(order.restaurantAddress) == null) // Full pickup address remains in Details.
@@ -773,9 +773,9 @@ class CurrentOrderUiInstrumentation : Instrumentation() {
         test("UI022 statuses other than PLACED retain the actual value rather than invented progress") {
             render("other-status", base.copy(orderKnowledge = DriverOrderKnowledge.ACTIVE),
                 DriverCurrentOrderUiState(order = order.copy(status = "PREPARING"), verified = true))
-            reveal("Trạng thái: Nhà hàng đang chuẩn bị món")
+            reveal("Trạng thái: Đang chờ quán")
             check(text("Trạng thái: PREPARING") == null)
-            check(!toggle().isEnabled && text("Trạng thái: Đã nhận đơn") == null && text("Đang giao") == null)
+            check(!toggle().isEnabled && text("Đang giao") == null)
         }
         val policyMessage = "Đang thực hiện đơn hàng. Không tự tắt nhận đơn; hãy kiểm tra GPS/kết nối."
         val activeNotice = "Bạn đang thực hiện đơn. Hãy kiểm tra vị trí và kết nối khi cần."
@@ -788,7 +788,7 @@ class CurrentOrderUiInstrumentation : Instrumentation() {
                 reveal("Đang thực hiện đơn")
                 check(text(activeNotice) == null && !toggle().isEnabled && toggle().isChecked == online && requested == null)
                 reveal("Đơn ${order.orderCode}")
-                check(text("Trạng thái: Đã nhận đơn") != null && text(order.restaurantName) != null)
+                check(text("Trạng thái: Đang chờ quán") != null && text(order.restaurantName) != null)
             }
         }
         test("UI023 verified ACTIVE background GET keeps indicator without flashing a routine error notice") {

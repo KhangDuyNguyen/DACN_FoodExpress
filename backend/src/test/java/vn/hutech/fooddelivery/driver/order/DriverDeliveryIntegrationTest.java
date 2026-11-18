@@ -1,6 +1,5 @@
 package vn.hutech.fooddelivery.driver.order;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,8 +21,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import vn.hutech.fooddelivery.assignment.AssignmentService;
 import vn.hutech.fooddelivery.driver.earnings.DriverEarningsRepository;
+import vn.hutech.fooddelivery.order.OrderManagementService;
 import vn.hutech.fooddelivery.order.OrderRepository;
 import vn.hutech.fooddelivery.security.JwtService;
 
@@ -65,10 +64,8 @@ class DriverDeliveryIntegrationTest {
     @Autowired NamedParameterJdbcTemplate jdbc;
     @Autowired DataSource dataSource;
     @Autowired JwtService jwt;
-    @Autowired AssignmentService assignment;
-    @Autowired DriverDeliveryService deliveryService;
+    @Autowired OrderManagementService deliveryService;
     @Autowired PlatformTransactionManager transactions;
-    @MockitoSpyBean DriverDeliveryRepository deliveries;
     @MockitoSpyBean OrderRepository orders;
     @MockitoSpyBean DriverEarningsRepository earnings;
     Fixture f;
@@ -188,20 +185,19 @@ class DriverDeliveryIntegrationTest {
         orders.insertStatusHistory(f.order(), "PLACED", f.customer(), null);
     }
 
-    @ParameterizedTest @ValueSource(strings = {"PREPARING", "READY_FOR_PICKUP"})
-    void pickupAcceptsBothStatesAndDoesNotRecheckExpiredOfferOrGps(String from) throws Exception {
-        setStatus(from);
+    @Test void pickupFromReadyDoesNotRecheckExpiredOfferOrGps() throws Exception {
+        setStatus("READY_FOR_PICKUP");
         jdbc.update("UPDATE drivers SET is_online=FALSE,current_lat=NULL,last_location_at=NULL WHERE id=:id", Map.of("id", f.driver()));
         var before = orderRow();
-        patchStatus(f.driverUser(), "PICKED_UP").andExpect(status().isOk());
+        patchStatus(f.driverUser(), "DELIVERING").andExpect(status().isOk());
         assertEquals(2, count("order_status_history"));
         assertEquals(f.driverUser(), jdbc.queryForObject("""
-                SELECT changed_by FROM order_status_history WHERE order_id=:id AND status='PICKED_UP'
+                SELECT changed_by FROM order_status_history WHERE order_id=:id AND status='DELIVERING'
                 """, Map.of("id", f.order()), Long.class));
         assertNotEquals(f.driver(), f.driverUser());
         assertTrue(jdbc.queryForObject("""
                 SELECT TIMESTAMPDIFF(SECOND,changed_at,NOW()) BETWEEN 0 AND 30
-                FROM order_status_history WHERE order_id=:id AND status='PICKED_UP'
+                FROM order_status_history WHERE order_id=:id AND status='DELIVERING'
                 """, Map.of("id", f.order()), Boolean.class));
         assertEquals(before.get("delivery_fee"), orderRow().get("delivery_fee"));
         assertEquals(0, count("driver_earnings"));
@@ -210,31 +206,41 @@ class DriverDeliveryIntegrationTest {
     @Test void acceptedThenPreparedDeliveryFlowKeepsCurrentHistoryAndFiltersCompatible() throws Exception {
         waitingOffer();
         accept().andExpect(status().isOk());
-        assertEquals("PREPARING", orderRow().get("status"));
+        assertEquals("PLACED", orderRow().get("status"));
         merchant("PREPARING").andExpect(status().isOk());
-        for (String next : List.of("PICKED_UP", "DELIVERING", "DELIVERED")) {
-            patchStatus(f.driverUser(), next).andExpect(status().isOk());
-            patchStatus(f.driverUser(), next).andExpect(status().isOk());
+        merchant("READY_FOR_PICKUP").andExpect(status().isOk());
+        for (String next : List.of("DELIVERING", "DELIVERED")) {
+            patchStatus(f.driverUser(), next).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.id").value(f.order()))
+                    .andExpect(jsonPath("$.status").value(next));
+            patchStatus(f.driverUser(), next).andExpect(status().isConflict());
         }
-        assertEquals(5, count("order_status_history")); // fixture + Accept preparation + three driver transitions
+        assertEquals(5, count("order_status_history"));
         assertEquals(1, count("driver_earnings"));
         assertNotNull(orderRow().get("delivered_at"));
         assertEquals(new BigDecimal("12001"), jdbc.queryForObject(
                 "SELECT amount FROM driver_earnings WHERE order_id=:id", Map.of("id", f.order()), BigDecimal.class));
+        assertEquals(f.driver(), jdbc.queryForObject(
+                "SELECT driver_id FROM driver_earnings WHERE order_id=:id", Map.of("id", f.order()), Long.class));
         assertEquals(BigDecimal.ZERO, jdbc.queryForObject(
                 "SELECT bonus FROM driver_earnings WHERE order_id=:id", Map.of("id", f.order()), BigDecimal.class));
         mvc.perform(get("/api/driver/orders/current").header("Authorization", auth(f.driverUser(), "DRIVER")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.currentOrder").isEmpty());
+        mvc.perform(get("/api/driver/orders/history").header("Authorization", auth(f.driverUser(), "DRIVER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].orderId").value(f.order()));
+        mvc.perform(get("/api/driver/earnings").header("Authorization", auth(f.driverUser(), "DRIVER")))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].orderId").value(f.order()))
+                .andExpect(jsonPath("$.totalAmount").value(12001));
         mvc.perform(get("/api/orders/{id}", f.order()).header("Authorization", auth(f.customer(), "CUSTOMER")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DELIVERED"));
-        mvc.perform(get("/api/merchant/orders").param("status", "PICKED_UP")
+        mvc.perform(get("/api/merchant/orders").param("status", "DELIVERED")
                         .header("Authorization", auth(f.merchant(), "MERCHANT")))
                 .andExpect(status().isOk());
     }
 
     @ParameterizedTest
-    @CsvSource({"PLACED,PICKED_UP", "PREPARING,DELIVERING", "PREPARING,DELIVERED", "PICKED_UP,DELIVERED",
-            "DELIVERING,PICKED_UP", "CANCELLED,PICKED_UP", "REJECTED,DELIVERING"})
+    @CsvSource({"PLACED,DELIVERING", "PREPARING,DELIVERING", "PREPARING,DELIVERED",
+            "READY_FOR_PICKUP,DELIVERED", "CANCELLED,DELIVERING", "REJECTED,DELIVERING"})
     void invalidStepsLeaveAllBusinessDataUnchanged(String from, String to) throws Exception {
         setStatus(from);
         var before = orderRow(); long history = count("order_status_history");
@@ -244,29 +250,15 @@ class DriverDeliveryIntegrationTest {
         assertEquals(0, count("driver_earnings"));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"OFFERED", "REJECTED", "EXPIRED", "CANCELLED", "wrongDriver", "duplicate"})
-    void acceptedAssignmentMustBeUniqueAndBelongToAssignedDriver(String change) throws Exception {
-        if (change.equals("wrongDriver")) {
-            jdbc.update("UPDATE order_assignments SET driver_id=:driver WHERE id=:id", Map.of("driver", f.otherDriver(), "id", f.offer()));
-        } else if (change.equals("duplicate")) {
-            jdbc.update("INSERT INTO order_assignments (order_id,driver_id,status) VALUES (:order,:driver,'ACCEPTED')",
-                    Map.of("order", f.order(), "driver", f.driver()));
-        } else {
-            jdbc.update("UPDATE order_assignments SET status=:status WHERE id=:id", Map.of("status", change, "id", f.offer()));
-        }
-        patchStatus(f.driverUser(), "PICKED_UP").andExpect(status().isConflict());
-        assertEquals("PREPARING", orderRow().get("status"));
-        assertEquals(1, count("order_status_history"));
-    }
-
     @Test void otherDriverCannotWriteAndOldRequestsAfterProgressAreRejected() throws Exception {
-        patchStatus(f.otherUser(), "PICKED_UP").andExpect(status().isForbidden());
-        patchStatus(f.driverUser(), "PICKED_UP").andExpect(status().isOk());
+        setStatus("READY_FOR_PICKUP");
+        patchStatus(f.otherUser(), "DELIVERING").andExpect(status().isForbidden());
+        patchStatus(f.driverUser(), "PICKED_UP").andExpect(status().isBadRequest());
         patchStatus(f.driverUser(), "DELIVERING").andExpect(status().isOk());
         var before = orderRow();
-        patchStatus(f.driverUser(), "PICKED_UP").andExpect(status().isConflict());
+        patchStatus(f.driverUser(), "DELIVERING").andExpect(status().isConflict());
         assertEquals(before, orderRow());
-        assertEquals(3, count("order_status_history"));
+        assertEquals(2, count("order_status_history"));
     }
 
     @ParameterizedTest @ValueSource(strings = {"history", "earnings", "afterEarnings", "duplicateInsert"})
@@ -284,7 +276,7 @@ class DriverDeliveryIntegrationTest {
                 return null;
             }).when(earnings).insert(f.order(), f.driver(), new BigDecimal("12001"));
         }
-        patchStatus(f.driverUser(), "DELIVERED").andExpect(status().is(stage.equals("duplicateInsert") ? 409 : 500));
+        patchStatus(f.driverUser(), "DELIVERED").andExpect(status().isInternalServerError());
         assertEquals(before, orderRow());
         assertEquals(history, count("order_status_history"));
         assertEquals(0, count("driver_earnings"));
@@ -299,7 +291,7 @@ class DriverDeliveryIntegrationTest {
         setStatus("DELIVERING");
         var before = orderRow(); long history = count("order_status_history");
         new TransactionTemplate(transactions).executeWithoutResult(transaction -> {
-            deliveryService.changeStatus(f.driverUser(), f.order(), "DELIVERED");
+            deliveryService.changeStatusByDriver(f.driverUser(), f.order(), "DELIVERED");
             assertEquals(1, count("driver_earnings"));
             transaction.setRollbackOnly();
         });
@@ -315,7 +307,7 @@ class DriverDeliveryIntegrationTest {
         var earning = jdbc.queryForMap("SELECT * FROM driver_earnings WHERE order_id=:id", Map.of("id", f.order()));
         var history = jdbc.queryForList("SELECT * FROM order_status_history WHERE order_id=:id ORDER BY id", Map.of("id", f.order()));
         jdbc.update("UPDATE orders SET delivery_fee=99999 WHERE id=:id", Map.of("id", f.order()));
-        patchStatus(f.driverUser(), "DELIVERED").andExpect(status().isOk());
+        patchStatus(f.driverUser(), "DELIVERED").andExpect(status().isConflict());
         assertEquals(earning, jdbc.queryForMap("SELECT * FROM driver_earnings WHERE order_id=:id", Map.of("id", f.order())));
         assertEquals(before.get("delivered_at"), orderRow().get("delivered_at"));
         assertEquals(history, jdbc.queryForList("SELECT * FROM order_status_history WHERE order_id=:id ORDER BY id", Map.of("id", f.order())));
@@ -329,7 +321,7 @@ class DriverDeliveryIntegrationTest {
         }
         if (!change.equals("missingHistory")) orders.insertStatusHistory(f.order(), "DELIVERED", f.driverUser(), null);
         var before = orderRow(); long history = count("order_status_history"), money = count("driver_earnings");
-        patchStatus(f.driverUser(), "DELIVERED").andExpect(status().isConflict());
+        patchStatus(f.driverUser(), "DELIVERED").andExpect(status().is(change.equals("prematureEarning") ? 500 : 409));
         assertEquals(before, orderRow()); assertEquals(history, count("order_status_history"));
         assertEquals(money, count("driver_earnings"));
     }
@@ -360,13 +352,27 @@ class DriverDeliveryIntegrationTest {
         assertEquals(0, count("driver_earnings"));
     }
 
-    @Test void preparingBeforeDriverAcceptRemainsAssignableUnderWeek5Contract() throws Exception {
-        waitingOffer();
-        merchant("PREPARING").andExpect(status().isOk());
-        accept().andExpect(status().isOk());
-        assertTrue(assignment.createOffer(f.order()).isEmpty());
-        assertEquals(f.driver(), ((Number) orderRow().get("driver_id")).longValue());
-        assertEquals("PREPARING", orderRow().get("status"));
+    @Test void merchantCompletesUnassignedOrderWithoutEarning() throws Exception {
+        jdbc.update("DELETE FROM order_assignments WHERE id=:id", Map.of("id", f.offer()));
+        jdbc.update("UPDATE orders SET driver_id=NULL WHERE id=:id", Map.of("id", f.order()));
+        merchant("READY_FOR_PICKUP").andExpect(status().isOk());
+        patchStatus(f.driverUser(), "DELIVERING").andExpect(status().isForbidden());
+        merchant("DELIVERING").andExpect(status().isOk());
+        merchant("DELIVERED").andExpect(status().isOk()).andExpect(jsonPath("$.status").value("DELIVERED"));
+        assertNotNull(orderRow().get("delivered_at"));
+        assertEquals(0, count("driver_earnings"));
+    }
+
+    @Test void swaggerExposesMainPatchAndTheThreeReadRoutes() throws Exception {
+        var response = mvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var paths = json.readTree(response).path("paths");
+        var patch = paths.path("/api/driver/orders/{id}/status").path("patch");
+        assertEquals("#/components/schemas/OrderDetailResponse",
+                patch.path("responses").path("200").path("content").findPath("$ref").asText());
+        for (String path : List.of("/api/driver/orders/current", "/api/driver/orders/history", "/api/driver/earnings")) {
+            assertTrue(paths.path(path).has("get"), path);
+        }
     }
 
     @Test void twoConcurrentDeliveredRequestsProduceOneHistoryAndOneEarning() throws Exception {
@@ -380,14 +386,14 @@ class DriverDeliveryIntegrationTest {
             Object value = call.callRealMethod();
             if (hold) { acquired.countDown(); assertTrue(release.await(15, TimeUnit.SECONDS)); }
             return value;
-        }).when(deliveries).lockOrder(f.order());
+        }).when(orders).lockForUpdate(f.order());
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var a = executor.submit(() -> patchStatus(f.driverUser(), "DELIVERED").andReturn().getResponse().getStatus());
             assertTrue(acquired.await(10, TimeUnit.SECONDS));
             var b = executor.submit(() -> patchStatus(f.driverUser(), "DELIVERED").andReturn().getResponse().getStatus());
             try { assertTrue(secondEntered.await(10, TimeUnit.SECONDS)); }
             finally { release.countDown(); }
-            assertEquals(200, a.get(15, TimeUnit.SECONDS)); assertEquals(200, b.get(15, TimeUnit.SECONDS));
+            assertEquals(200, a.get(15, TimeUnit.SECONDS)); assertEquals(409, b.get(15, TimeUnit.SECONDS));
             assertEquals(2, connections.size());
         } finally { release.countDown(); }
         assertEquals(1, count("driver_earnings"));
@@ -396,14 +402,15 @@ class DriverDeliveryIntegrationTest {
     }
 
     @Test void concurrentPickupAndMerchantCancelCannotLeaveCancelledAcceptedDelivery() throws Exception {
+        setStatus("READY_FOR_PICKUP");
         var start = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var pickup = executor.submit(() -> { assertTrue(start.await(10, TimeUnit.SECONDS)); return patchStatus(f.driverUser(), "PICKED_UP").andReturn().getResponse().getStatus(); });
+            var pickup = executor.submit(() -> { assertTrue(start.await(10, TimeUnit.SECONDS)); return patchStatus(f.driverUser(), "DELIVERING").andReturn().getResponse().getStatus(); });
             var cancel = executor.submit(() -> { assertTrue(start.await(10, TimeUnit.SECONDS)); return merchant("CANCELLED").andReturn().getResponse().getStatus(); });
             start.countDown();
             assertEquals(200, pickup.get(15, TimeUnit.SECONDS)); assertEquals(409, cancel.get(15, TimeUnit.SECONDS));
         }
-        assertEquals("PICKED_UP", orderRow().get("status"));
+        assertEquals("DELIVERING", orderRow().get("status"));
     }
 
     @Test void concurrentAcceptAndCustomerCancelAreSerializedByOrderLock() throws Exception {
@@ -415,58 +422,26 @@ class DriverDeliveryIntegrationTest {
             int a = accept.get(15, TimeUnit.SECONDS), c = cancel.get(15, TimeUnit.SECONDS);
             assertTrue((a == 200 && c == 409) || (a == 409 && c == 200), "accept=" + a + ", cancel=" + c);
             String offerStatus = jdbc.queryForObject("SELECT status FROM order_assignments WHERE id=:id", Map.of("id", f.offer()), String.class);
-            if (a == 200) { assertEquals("PREPARING", orderRow().get("status")); assertEquals("ACCEPTED", offerStatus); }
+            if (a == 200) { assertEquals("PLACED", orderRow().get("status")); assertEquals("ACCEPTED", offerStatus); }
             else { assertEquals("CANCELLED", orderRow().get("status")); assertNotEquals("ACCEPTED", offerStatus); }
         }
     }
 
     @Test void deliveryWaitsForUncommittedCancellationAndRechecksCurrentStatus() throws Exception {
         var entered = new CountDownLatch(1);
-        doAnswer(call -> { entered.countDown(); return call.callRealMethod(); }).when(deliveries).lockOrder(f.order());
+        doAnswer(call -> { entered.countDown(); return call.callRealMethod(); }).when(orders).lockForUpdate(f.order());
         try (var connection = dataSource.getConnection(); var executor = Executors.newSingleThreadExecutor()) {
             connection.setAutoCommit(false);
             try {
                 try (var statement = connection.prepareStatement("UPDATE orders SET status='CANCELLED' WHERE id=?")) {
                     statement.setLong(1, f.order()); assertEquals(1, statement.executeUpdate());
                 }
-                var result = executor.submit(() -> patchStatus(f.driverUser(), "PICKED_UP").andReturn().getResponse().getStatus());
+                var result = executor.submit(() -> patchStatus(f.driverUser(), "DELIVERING").andReturn().getResponse().getStatus());
                 assertTrue(entered.await(10, TimeUnit.SECONDS)); connection.commit();
                 assertEquals(409, result.get(15, TimeUnit.SECONDS));
             } finally { connection.rollback(); }
         }
         assertEquals(1, count("order_status_history")); assertEquals(0, count("driver_earnings"));
-    }
-
-    @Test void lockTimeoutReturns503AndDoesNotCommitPartialDelivery() throws Exception {
-        var entered = new CountDownLatch(1);
-        doAnswer(call -> {
-            jdbc.getJdbcTemplate().execute("SET SESSION innodb_lock_wait_timeout=1");
-            entered.countDown();
-            try { return call.callRealMethod(); }
-            finally { jdbc.getJdbcTemplate().execute("SET SESSION innodb_lock_wait_timeout=50"); }
-        }).when(deliveries).lockOrder(f.order());
-        var before = orderRow();
-        try (var connection = dataSource.getConnection(); var executor = Executors.newSingleThreadExecutor()) {
-            connection.setAutoCommit(false);
-            try {
-                try (var statement = connection.prepareStatement("SELECT id FROM orders WHERE id=? FOR UPDATE")) {
-                    statement.setLong(1, f.order()); statement.executeQuery().close();
-                }
-                var result = executor.submit(() -> patchStatus(f.driverUser(), "PICKED_UP").andReturn().getResponse().getStatus());
-                assertTrue(entered.await(10, TimeUnit.SECONDS)); assertEquals(503, result.get(10, TimeUnit.SECONDS));
-            } finally { connection.rollback(); }
-        }
-        assertEquals(before, orderRow()); assertEquals(1, count("order_status_history"));
-        patchStatus(f.driverUser(), "PICKED_UP").andExpect(status().isOk());
-    }
-
-    @Test void swaggerDescribesDeliveryTargetsAndFailureCodes() throws Exception {
-        JsonNode spec = json.readTree(mvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        var operation = spec.path("paths").path("/api/driver/orders/{id}/status").path("patch");
-        for (String code : List.of("200", "400", "401", "403", "404", "409", "500", "503")) {
-            assertTrue(operation.path("responses").has(code), code);
-        }
-        assertTrue(operation.has("requestBody"));
     }
 
     private record Fixture(long customer, long merchant, long driverUser, long otherUser, long driver,

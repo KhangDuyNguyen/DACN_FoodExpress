@@ -130,12 +130,8 @@ public class AssignmentOfferRepository {
     }
 
     record OrderSnapshot(long id, long restaurantId, Long driverId, String status) {
-        boolean acceptsDriver() {
-            return "PLACED".equals(status) || "PREPARING".equals(status) || "READY_FOR_PICKUP".equals(status);
-        }
-
         boolean canAssign() {
-            return acceptsDriver() && driverId == null;
+            return "PLACED".equals(status) && driverId == null;
         }
     }
 

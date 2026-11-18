@@ -7,71 +7,75 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-/** Unit test luat chuyen trang thai: thu MOI cap (tu, sang) cho tung vai tro. */
+/** Unit test luat chuyen trang thai: thu MOI cap (tu, sang) cho tung vai tro, co va khong co tai xe. */
 class OrderStatusFlowTest {
 
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Kiem tra day du enum DB, gom ca trang thai khong duoc giao.
-    private static final List<String> STATUSES = List.of("PENDING_PAYMENT", "PLACED", "ACCEPTED", "PREPARING",
-            "READY_FOR_PICKUP", "PICKED_UP", "DELIVERING", "DELIVERED", "CANCELLED", "REJECTED");
+    private static final List<String> STATUSES =
+            List.of("PLACED", "PREPARING", "READY_FOR_PICKUP", "DELIVERING", "DELIVERED", "CANCELLED");
 
     // Cac buoc hop le, viet dang "TU>SANG"
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]:
-    // Kiem tra canh PREPARING -> READY_FOR_PICKUP cua merchant, giu cac canh giao cua driver.
-    private static final Set<String> MERCHANT_ALLOWED = Set.of(
+    private static final Set<String> MERCHANT_NO_DRIVER = Set.of(
             "PLACED>PREPARING", "PLACED>CANCELLED",
-            "PREPARING>CANCELLED", "PREPARING>READY_FOR_PICKUP");
+            "PREPARING>READY_FOR_PICKUP", "PREPARING>CANCELLED",
+            "READY_FOR_PICKUP>DELIVERING", "DELIVERING>DELIVERED");
+    // Don da co tai xe: chu quan mat 2 buoc giao hang
+    private static final Set<String> MERCHANT_WITH_DRIVER = Set.of(
+            "PLACED>PREPARING", "PLACED>CANCELLED",
+            "PREPARING>READY_FOR_PICKUP", "PREPARING>CANCELLED");
+    private static final Set<String> DRIVER_WITH_DRIVER = Set.of(
+            "READY_FOR_PICKUP>DELIVERING", "DELIVERING>DELIVERED");
     private static final Set<String> CUSTOMER_ALLOWED = Set.of("PLACED>CANCELLED");
 
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [ADD]: Tai xe chi co 4 canh giao duoc duyet, khong huy/nhan mon ho merchant.
-    @Test
-    void driverCanOnlyFollowEveryDeliveryStep() {
-        var allowed = Set.of("PREPARING>PICKED_UP", "READY_FOR_PICKUP>PICKED_UP",
-                "PICKED_UP>DELIVERING", "DELIVERING>DELIVERED");
+    private static void assertTable(Actor actor, boolean hasDriver, Set<String> allowed) {
         for (String from : STATUSES) {
             for (String to : STATUSES) {
-                assertEquals(allowed.contains(from + ">" + to), OrderStatusFlow.canChange(Actor.DRIVER, from, to),
-                        from + " -> " + to);
+                boolean expected = allowed.contains(from + ">" + to);
+                assertEquals(expected, OrderStatusFlow.canChange(actor, from, to, hasDriver),
+                        actor + (hasDriver ? " (co tai xe) " : " (chua co tai xe) ") + from + " -> " + to);
             }
         }
     }
 
     @Test
-    void merchantCanOnlyMoveForwardOrCancelBeforeDelivering() {
-        for (String from : STATUSES) {
-            for (String to : STATUSES) {
-                boolean expected = MERCHANT_ALLOWED.contains(from + ">" + to);
-                assertEquals(expected, OrderStatusFlow.canChange(Actor.MERCHANT, from, to),
-                        "Chu quan " + from + " -> " + to);
-            }
-        }
+    void merchantWithoutDriverDoesEveryStepIncludingDelivery() {
+        assertTable(Actor.MERCHANT, false, MERCHANT_NO_DRIVER);
+    }
+
+    @Test
+    void merchantCannotDoDeliveryStepsOnceADriverIsAssigned() {
+        assertTable(Actor.MERCHANT, true, MERCHANT_WITH_DRIVER);
+    }
+
+    @Test
+    void driverOnlyDoesDeliveryStepsAndOnlyWhenAssigned() {
+        assertTable(Actor.DRIVER, true, DRIVER_WITH_DRIVER);
+        assertTable(Actor.DRIVER, false, Set.of());
     }
 
     @Test
     void customerCanOnlyCancelWhilePlaced() {
-        for (String from : STATUSES) {
-            for (String to : STATUSES) {
-                boolean expected = CUSTOMER_ALLOWED.contains(from + ">" + to);
-                assertEquals(expected, OrderStatusFlow.canChange(Actor.CUSTOMER, from, to),
-                        "Khach " + from + " -> " + to);
-            }
-        }
+        assertTable(Actor.CUSTOMER, false, CUSTOMER_ALLOWED);
+        assertTable(Actor.CUSTOMER, true, CUSTOMER_ALLOWED);
     }
 
     @Test
     void finishedOrdersCannotChangeAnymore() {
-        for (String to : STATUSES) {
-            assertEquals(false, OrderStatusFlow.canChange(Actor.MERCHANT, "DELIVERED", to));
-            assertEquals(false, OrderStatusFlow.canChange(Actor.MERCHANT, "CANCELLED", to));
+        for (Actor actor : Actor.values()) {
+            for (String to : STATUSES) {
+                assertFalse(OrderStatusFlow.canChange(actor, "DELIVERED", to, true));
+                assertFalse(OrderStatusFlow.canChange(actor, "CANCELLED", to, false));
+            }
         }
     }
 
     @Test
     void labelsAreVietnamese() {
         assertEquals("Chờ xác nhận", OrderStatusFlow.label("PLACED"));
+        assertEquals("Chờ lấy món", OrderStatusFlow.label("READY_FOR_PICKUP"));
         assertEquals("Hoàn thành", OrderStatusFlow.label("DELIVERED"));
-        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Nhan giao hang moi van hien tieng Viet.
-        assertEquals("Đã lấy món", OrderStatusFlow.label("PICKED_UP"));
-        assertEquals("Sẵn sàng lấy món", OrderStatusFlow.label("READY_FOR_PICKUP"));
+        // Trang thai ngoai tap dang dung thi giu nguyen ten
+        assertEquals("PICKED_UP", OrderStatusFlow.label("PICKED_UP"));
     }
 }

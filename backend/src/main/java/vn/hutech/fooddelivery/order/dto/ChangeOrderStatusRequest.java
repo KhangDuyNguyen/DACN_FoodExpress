@@ -10,8 +10,6 @@ import jakarta.validation.constraints.Size;
 /** Chu quan doi trang thai don. Huy don (CANCELLED) thi bat buoc co ly do. */
 public record ChangeOrderStatusRequest(
         @NotBlank(message = "Vui lòng chọn trạng thái mới")
-        // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]:
-        // Cho merchant bao mon san sang truoc khi co tai xe; Service van kiem tra quyen va thu tu.
         @Pattern(regexp = "PREPARING|READY_FOR_PICKUP|DELIVERING|DELIVERED|CANCELLED",
                 message = "Trạng thái chỉ được là PREPARING, READY_FOR_PICKUP, DELIVERING, DELIVERED hoặc CANCELLED")
         String status,

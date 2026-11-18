@@ -23,7 +23,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import vn.hutech.fooddelivery.order.OrderRepository;
 import vn.hutech.fooddelivery.common.ConflictException;
 
 import javax.sql.DataSource;
@@ -57,7 +56,7 @@ import static org.mockito.Mockito.doThrow;
         "spring.datasource.hikari.connection-init-sql=SET SESSION innodb_lock_wait_timeout=5"})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import({AssignmentRepository.class, AssignmentOfferRepository.class, DriverOfferRepository.class,
-        AssignmentRecoveryRepository.class, OrderRepository.class, AssignmentRecoveryIntegrationTest.Services.class})
+        AssignmentRecoveryRepository.class, AssignmentRecoveryIntegrationTest.Services.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Testcontainers(disabledWithoutDocker = true)
 class AssignmentRecoveryIntegrationTest {
@@ -89,8 +88,8 @@ class AssignmentRecoveryIntegrationTest {
             return new AssignmentService(candidates, parents, creation, clock);
         }
         @Bean DriverOfferDecisionService driverOfferDecisionService(DriverOfferRepository offers,
-                AssignmentOfferRepository parents, OrderRepository orders, TestClock clock) {
-            return new DriverOfferDecisionService(offers, parents, orders, clock);
+                                                                     AssignmentOfferRepository parents, TestClock clock) {
+            return new DriverOfferDecisionService(offers, parents, clock);
         }
         @Bean AssignmentOfferLifecycleService assignmentOfferLifecycleService(AssignmentOfferRepository parents,
                 DriverOfferRepository offers, AssignmentRecoveryRepository repository, TestClock clock) {

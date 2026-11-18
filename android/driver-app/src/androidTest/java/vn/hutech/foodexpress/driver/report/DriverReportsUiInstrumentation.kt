@@ -228,11 +228,11 @@ class DriverReportsUiInstrumentation : Instrumentation() {
             test("Active card opens existing M06 directly; no Delivery buttons in list") {
                 runOnMainSync { current.value=DriverCurrentOrderUiState(order=activeOrder(),verified=true,ownerId=7) }
                 await { text("Đơn FIXTURE-CURRENT-88090")!=null }
-                await { text("Trạng thái: Nhà hàng đang chuẩn bị món")!=null && text("Đã nhận đơn")!=null }
+                await { text("Trạng thái: Đang chờ quán")!=null && text("Đã nhận đơn")!=null }
                 check(text("Trạng thái: PREPARING")==null && text("Đã nhận")==null)
                 await { whiteStatusBar(main) }
                 check(text("Đã lấy món")==null && patches==0); capture("06-orders-active.png")
-                click("Đơn FIXTURE-CURRENT-88090"); await { text("Chi tiết đơn hàng")!=null && text("Nhà hàng đang chuẩn bị món")!=null }
+                click("Đơn FIXTURE-CURRENT-88090"); await { text("Chi tiết đơn hàng")!=null && text("Đang chờ quán")!=null }
                 await { whiteStatusBar(main) }
                 capture("15-m06-from-orders.png")
                 click("Quay lại Trang chủ"); await { text("Đang thực hiện")!=null && text("Lịch sử đã giao")!=null }
@@ -248,8 +248,8 @@ class DriverReportsUiInstrumentation : Instrumentation() {
             }
             test("Active status labels are presentation only and never change the API enum") {
                 click("Đang thực hiện")
-                for ((code,label) in listOf("READY_FOR_PICKUP" to "Món đã sẵn sàng", "PICKED_UP" to "Đã lấy món",
-                    "DELIVERING" to "Đang giao hàng", "PLACED" to "Đã nhận đơn", "PENDING_PAYMENT" to "Chờ thanh toán",
+                for ((code,label) in listOf("READY_FOR_PICKUP" to "Món đã sẵn sàng", "PREPARING" to "Đang chờ quán",
+                    "DELIVERING" to "Đang giao hàng", "PLACED" to "Đang chờ quán", "PENDING_PAYMENT" to "Chờ thanh toán",
                     "DELIVERED" to "Giao hàng thành công", "CANCELLED" to "Đơn đã hủy", "REJECTED" to "Đơn đã bị từ chối")) {
                     runOnMainSync { current.value=current.value.copy(order=current.value.order!!.copy(status=code)) }
                     await { text("Trạng thái: $label")!=null }
@@ -263,7 +263,7 @@ class DriverReportsUiInstrumentation : Instrumentation() {
                 click("FIXTURE-HISTORY-88100"); await { text("Chi tiết đơn đã giao")!=null }
                 check(text("FIXTURE Restaurant")!=null && text("Đã giao thành công")!=null)
                 check(text("Hoàn thành lúc: 13/11/2026 09:00")!=null)
-                check(text("Đã lấy món")==null && text("Xác nhận đã giao")==null && text("40.000đ")==null)
+                check(text("Đã lấy món")==null && text("Đã giao")==null && text("40.000đ")==null)
                 capture("08-history-detail.png"); click("Quay lại")
                 await { text("Các đơn đã hoàn tất của bạn")!=null }; check(vm.state.value.historySelected)
             }

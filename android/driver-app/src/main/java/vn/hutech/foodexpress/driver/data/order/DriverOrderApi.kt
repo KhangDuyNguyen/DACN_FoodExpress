@@ -27,8 +27,8 @@ interface DriverOrderApi {
 }
 
 data class DriverDeliveryRequest(val status: String)
-data class DriverDeliveryDto(val orderId: Long? = null, val status: String? = null,
-    val updatedAt: String? = null, val deliveredAt: String? = MISSING_NULLABLE_FIELD)
+data class DriverDeliveryDto(val id: Long? = null, val status: String? = null,
+    val deliveredAt: String? = null)
 
 // A missing field keeps the invalid empty object; an explicit JSON null becomes null.
 data class DriverCurrentOrderDto(
@@ -61,7 +61,7 @@ object DriverOrderModule {
             .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false)
             .addInterceptor { chain ->
                 val request = chain.request()
-                val body = requireNotNull(request.body)
+                val body = requireNotNull(request.body())
                 // Also prevent Retry-After follow-ups (408/503); explicit user replay creates a new Call/body.
                 val once = object : RequestBody() {
                     override fun contentType() = body.contentType()
@@ -69,7 +69,7 @@ object DriverOrderModule {
                     override fun isOneShot() = true
                     override fun writeTo(sink: BufferedSink) = body.writeTo(sink)
                 }
-                chain.proceed(request.newBuilder().method(request.method, once).build())
+                chain.proceed(request.newBuilder().method(request.method(), once).build())
             }.build())
             .build().create(DriverOrderApi::class.java)
         return object : DriverOrderApi {

@@ -2,6 +2,7 @@ package vn.hutech.fooddelivery.order;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.hutech.fooddelivery.common.PageResponse;
 import vn.hutech.fooddelivery.order.dto.CancelOrderRequest;
 import vn.hutech.fooddelivery.order.dto.CreateOrderRequest;
+import vn.hutech.fooddelivery.order.dto.CreateOrderResponse;
 import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
 import vn.hutech.fooddelivery.order.dto.OrderPreviewRequest;
 import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
@@ -31,8 +33,10 @@ import vn.hutech.fooddelivery.security.AuthUser;
 @Tag(name = "Orders", description = "Đặt hàng và đơn của khách (chỉ CUSTOMER)")
 public class OrderController {
 
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Cho khach/merchant loc cac trang thai giao moi, giu nguyen phan trang.
-    static final String STATUS_PATTERN = "PLACED|PREPARING|READY_FOR_PICKUP|PICKED_UP|DELIVERING|DELIVERED|CANCELLED";
+    /** Cac trang thai dang dung (tuan 4 them READY_FOR_PICKUP), kiem tra tham so ?status= (cho phep rong de lay tat ca) */
+    static final String STATUS_PATTERN = "^$|PLACED|PREPARING|READY_FOR_PICKUP|DELIVERING|DELIVERED|CANCELLED";
+    /** Khach con loc duoc don VNPay chua tra tien (quan thi khong thay nhung don nay nen dung STATUS_PATTERN). */
+    static final String CUSTOMER_STATUS_PATTERN = STATUS_PATTERN + "|PENDING_PAYMENT";
 
     private final OrderService orderService;
     private final OrderManagementService orderManagementService;
@@ -50,17 +54,20 @@ public class OrderController {
     }
 
     @PostMapping
-    @Operation(summary = "Đặt hàng từ giỏ hiện tại (giá lấy từ database, chạy trong 1 transaction)")
-    public ResponseEntity<OrderDetailResponse> createOrder(@AuthenticationPrincipal AuthUser user,
-                                                           @Valid @RequestBody CreateOrderRequest req) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(orderService.createOrder(user.id(), req));
+    @Operation(summary = "Đặt hàng từ giỏ hiện tại (giá lấy từ database, 1 transaction). VNPay: trả thêm paymentUrl")
+    public ResponseEntity<CreateOrderResponse> createOrder(@AuthenticationPrincipal AuthUser user,
+                                                           @Valid @RequestBody CreateOrderRequest req,
+                                                           HttpServletRequest request) {
+        // IP cua khach gui kem cho VNPay (vnp_IpAddr). Chay qua proxy cua Vite thi la IP may minh.
+        String clientIp = request.getRemoteAddr();
+        return ResponseEntity.status(HttpStatus.CREATED).body(orderService.createOrder(user.id(), req, clientIp));
     }
 
     @GetMapping
     @Operation(summary = "Lịch sử đơn của khách đang đăng nhập (mới nhất trước), lọc theo trạng thái")
     public ResponseEntity<PageResponse<OrderSummaryResponse>> myOrders(
             @AuthenticationPrincipal AuthUser user,
-            @RequestParam(required = false) @Pattern(regexp = STATUS_PATTERN) String status,
+            @RequestParam(required = false) @Pattern(regexp = CUSTOMER_STATUS_PATTERN) String status,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "10") @Min(1) @Max(50) int size) {
         return ResponseEntity.ok(orderManagementService.listCustomerOrders(user.id(), status, page, size));
@@ -74,8 +81,7 @@ public class OrderController {
     }
 
     @PostMapping("/{id}/cancel")
-    // Le Tan Binh An - MSSV 2380600006 - Tuan 5 [MODIFY]: Mo ta them dieu kien tai xe chua ACCEPTED.
-    @Operation(summary = "Khách hủy đơn PLACED khi tài xế chưa nhận giao, bắt buộc ghi lý do")
+    @Operation(summary = "Khách hủy đơn (chỉ khi quán chưa nhận đơn), bắt buộc ghi lý do")
     public ResponseEntity<OrderDetailResponse> cancel(@AuthenticationPrincipal AuthUser user,
                                                       @PathVariable long id,
                                                       @Valid @RequestBody CancelOrderRequest req) {

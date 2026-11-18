@@ -35,17 +35,15 @@ data class PendingDelivery(val orderId: Long, val orderCode: String, val target:
 data class DriverDeliveryCompletion(val orderId: Long, val orderCode: String, val deliveredAt: LocalDateTime)
 
 fun nextDeliveryStatus(status: String): String? = when (status) {
-    "PREPARING", "READY_FOR_PICKUP" -> "PICKED_UP"
-    "PICKED_UP" -> "DELIVERING"
+    "READY_FOR_PICKUP" -> "DELIVERING"
     "DELIVERING" -> "DELIVERED"
     else -> null
 }
 
 private fun deliveryStep(status: String) = when (status) {
-    "PREPARING", "READY_FOR_PICKUP" -> 0
-    "PICKED_UP" -> 1
-    "DELIVERING" -> 2
-    "DELIVERED" -> 3
+    "READY_FOR_PICKUP" -> 0
+    "DELIVERING" -> 1
+    "DELIVERED" -> 2
     else -> -1
 }
 
@@ -119,12 +117,12 @@ class DriverCurrentOrderViewModel @Inject constructor(private val source: Driver
         sendDelivery(PendingDelivery(order.orderId, order.orderCode, target))
     }
 
-    // Explicit user retry only; never advance to a different target or retry from polling/timers.
+    // An uncertain completion can only be reconciled by reading history.
     fun retryPendingDelivery() {
         val current = state.value
         val pending = current.deliveryPending ?: return
         if (!canLoad() || current.ownerId != owner || current.deliverySending || current.loading || current.sessionExpired) return
-        sendDelivery(pending)
+        if (pending.target == "DELIVERED") refresh() else sendDelivery(pending)
     }
 
     fun dismissCompletion() { mutableState.value = state.value.copy(completion = null) }
@@ -150,16 +148,13 @@ class DriverCurrentOrderViewModel @Inject constructor(private val source: Driver
                         mutableState.value = state.value.copy(verified = false, deliverySending = false,
                             deliveryMessage = "Phản hồi chưa đủ để xác nhận kết quả. Vui lòng kiểm tra lại.")
                     } else if (value.status == "DELIVERED") {
-                        deliveryFloor = null
-                        mutableState.value = state.value.copy(order = null, verified = false, error = null,
-                            deliverySending = false, deliveryPending = null, deliveryMessage = null,
-                            completion = DriverDeliveryCompletion(value.orderId, pending.orderCode, value.deliveredAt!!))
+                        confirmCompletion(pending, requireNotNull(value.deliveredAt))
                     } else {
                         deliveryFloor = value
                         val order = state.value.order?.takeIf { it.orderId == value.orderId }
-                            ?.copy(status = value.status, updatedAt = value.updatedAt)
+                            ?.copy(status = value.status)
                         mutableState.value = state.value.copy(order = order, verified = authenticated && order != null,
-                            error = null, deliverySending = false, deliveryPending = null, deliveryMessage = null)
+                            error = null, deliverySending = false, deliveryPending = null, deliveryMessage = "Đã cập nhật trạng thái giao hàng.")
                     }
                 }
                 DriverDeliveryResult.SessionExpired, DriverDeliveryResult.Forbidden -> {
@@ -177,11 +172,20 @@ class DriverCurrentOrderViewModel @Inject constructor(private val source: Driver
         }
     }
 
+    private fun confirmCompletion(pending: PendingDelivery, deliveredAt: LocalDateTime) {
+        deliveryFloor = null
+        mutableState.value = state.value.copy(order = null, verified = false, error = null,
+            deliverySending = false, deliveryPending = null, deliveryMessage = null,
+            completion = DriverDeliveryCompletion(pending.orderId, pending.orderCode, deliveredAt))
+    }
+
     private fun loaded(result: CurrentOrderResult.Loaded, revision: Long?) {
         var order = result.order
         val pending = state.value.deliveryPending
         if (pending != null) {
-            if (order != null && order.orderId == pending.orderId && deliveryStep(order.status) >= deliveryStep(pending.target)) {
+            if (pending.target == "DELIVERING" && order?.orderId == pending.orderId &&
+                order.status == "DELIVERING") {
+                deliveryFloor = DriverDeliveryStatus(order.orderId, order.status, null)
                 mutableState.value = state.value.copy(deliveryPending = null, deliveryMessage = "Đã xác minh trạng thái đơn hàng.")
             } else {
                 // Null alone cannot prove a lost DELIVERED response (cancellation/ownership may also change).
@@ -197,7 +201,7 @@ class DriverCurrentOrderViewModel @Inject constructor(private val source: Driver
         val floor = deliveryFloor
         if (order != null && floor?.orderId == order.orderId && deliveryStep(order.status) < deliveryStep(floor.status)) {
             // Keep the newer server-confirmed PATCH result; never regress because a GET snapshot is stale.
-            order = order.copy(status = floor.status, updatedAt = floor.updatedAt)
+            order = order.copy(status = floor.status)
         }
         if (revision != null) offers?.confirmCurrentOrder(order?.orderId, revision)
         mutableState.value = state.value.copy(order = order, verified = true, loading = false, error = null,
@@ -226,6 +230,13 @@ class DriverCurrentOrderViewModel @Inject constructor(private val source: Driver
                 catch (_: Exception) { CurrentOrderResult.Failed("Không thể đồng bộ đơn hiện tại. Vui lòng thử lại.") }
                 ensureActive()
                 if (session != generation || !canLoad()) break
+                val pending = state.value.deliveryPending
+                if (pending?.target == "DELIVERED" && result != CurrentOrderResult.SessionExpired) {
+                    val deliveredAt = source.findDeliveredAt(pending.orderId)
+                    ensureActive()
+                    if (session != generation || !canLoad()) break
+                    if (deliveredAt != null) confirmCompletion(pending, deliveredAt)
+                }
                 if (revision != offers?.currentOrderRevision) {
                     // A POST began after this GET. Never publish the pre-POST snapshot.
                     mutableState.value = state.value.copy(loading = false, verified = false)
