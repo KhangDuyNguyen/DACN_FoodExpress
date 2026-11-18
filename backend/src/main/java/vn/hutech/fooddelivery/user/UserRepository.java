@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -89,6 +90,42 @@ public class UserRepository {
     public void updateLastLogin(long id) {
         String sql = "UPDATE users SET last_login_at = NOW() WHERE id = :id";
         jdbc.update(sql, Map.of("id", id));
+    }
+
+    // ----- Trang admin quan ly nguoi dung (tuan 6) -----
+
+    /** Dieu kien loc dung chung cho danh sach va dem. Tham so null = khong loc theo tieu chi do. */
+    private static final String ADMIN_FILTER = """
+             WHERE (:role IS NULL OR role = :role)
+               AND (:status IS NULL OR status = :status)
+               AND (:keyword IS NULL OR full_name LIKE :keyword OR phone LIKE :keyword OR email LIKE :keyword)
+            """;
+
+    /** Danh sach user cho admin, moi nhat truoc. keyword tim trong ho ten, SDT, email (chua %...%). */
+    public List<UserRow> findForAdmin(String role, String status, String keyword, int limit, long offset) {
+        String sql = SELECT_COLUMNS + ADMIN_FILTER + " ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset";
+        MapSqlParameterSource params = adminFilterParams(role, status, keyword)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+        return jdbc.query(sql, params, USER_MAPPER);
+    }
+
+    public long countForAdmin(String role, String status, String keyword) {
+        Long total = jdbc.queryForObject("SELECT COUNT(*) FROM users" + ADMIN_FILTER,
+                adminFilterParams(role, status, keyword), Long.class);
+        return total == null ? 0 : total;
+    }
+
+    /** Admin khoa / mo khoa tai khoan. JwtAuthFilter doc lai trang thai o moi request nen co hieu luc ngay. */
+    public void updateStatus(long id, String status) {
+        jdbc.update("UPDATE users SET status = :status WHERE id = :id", Map.of("status", status, "id", id));
+    }
+
+    private static MapSqlParameterSource adminFilterParams(String role, String status, String keyword) {
+        return new MapSqlParameterSource()
+                .addValue("role", role)
+                .addValue("status", status)
+                .addValue("keyword", keyword == null ? null : "%" + keyword + "%");
     }
 
     private static LocalDateTime toLocalDateTime(Timestamp ts) {

@@ -7,6 +7,7 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import vn.hutech.fooddelivery.cart.CartLine;
+import vn.hutech.fooddelivery.order.dto.AdminOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderHistoryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderItemResponse;
@@ -496,6 +497,66 @@ public class OrderRepository {
             result.computeIfAbsent(orderId, k -> new ArrayList<>()).add(item);
         });
         return result;
+    }
+
+    // ----- Don toan san cho admin (tuan 6) -----
+
+    /** FROM + WHERE dung chung cho danh sach va dem. Admin thay MOI don, ke ca don VNPay chua tra tien. */
+    private static final String ADMIN_FROM_WHERE = """
+             FROM orders o
+             JOIN restaurants r ON r.id = o.restaurant_id
+             JOIN users cu ON cu.id = o.customer_id
+             LEFT JOIN drivers d ON d.id = o.driver_id
+             LEFT JOIN users du ON du.id = d.user_id
+             WHERE (:status IS NULL OR o.status = :status)
+               AND (:restaurantId IS NULL OR o.restaurant_id = :restaurantId)
+               AND (:paymentMethod IS NULL OR o.payment_method = :paymentMethod)
+               AND (:keyword IS NULL OR o.code LIKE :keyword OR cu.phone LIKE :keyword)
+               AND (:fromTime IS NULL OR o.created_at >= :fromTime)
+               AND (:toTime IS NULL OR o.created_at < :toTime)
+            """;
+
+    public List<AdminOrderSummaryResponse> findAdminSummaries(AdminOrderFilter filter, int limit, long offset) {
+        String sql = """
+                SELECT o.id, o.code, o.restaurant_id, r.name AS restaurant_name,
+                       cu.full_name AS customer_name, cu.phone AS customer_phone,
+                       o.status, o.payment_method, o.total_amount, du.full_name AS driver_name, o.created_at
+                """ + ADMIN_FROM_WHERE + " ORDER BY o.created_at DESC, o.id DESC LIMIT :limit OFFSET :offset";
+        MapSqlParameterSource params = adminFilterParams(filter)
+                .addValue("limit", limit)
+                .addValue("offset", offset);
+        return jdbc.query(sql, params, (rs, i) -> new AdminOrderSummaryResponse(
+                rs.getLong("id"),
+                rs.getString("code"),
+                rs.getLong("restaurant_id"),
+                rs.getString("restaurant_name"),
+                rs.getString("customer_name"),
+                rs.getString("customer_phone"),
+                rs.getString("status"),
+                rs.getString("payment_method"),
+                rs.getBigDecimal("total_amount"),
+                rs.getString("driver_name"),
+                toLocalDateTime(rs.getTimestamp("created_at"))
+        ));
+    }
+
+    public long countAdmin(AdminOrderFilter filter) {
+        Long total = jdbc.queryForObject("SELECT COUNT(*)" + ADMIN_FROM_WHERE, adminFilterParams(filter), Long.class);
+        return total == null ? 0 : total;
+    }
+
+    /**
+     * Doi bo loc thanh tham so SQL: tu khoa tim theo DAU chuoi (LIKE 'abc%'), ngay "den" tinh ca ngay do
+     * (created_at < 0 gio ngay hom sau).
+     */
+    private static MapSqlParameterSource adminFilterParams(AdminOrderFilter f) {
+        return new MapSqlParameterSource()
+                .addValue("status", f.status())
+                .addValue("restaurantId", f.restaurantId())
+                .addValue("paymentMethod", f.paymentMethod())
+                .addValue("keyword", f.keyword() == null ? null : f.keyword() + "%")
+                .addValue("fromTime", f.fromDate() == null ? null : f.fromDate().atStartOfDay())
+                .addValue("toTime", f.toDate() == null ? null : f.toDate().plusDays(1).atStartOfDay());
     }
 
     // ----- Doi trang thai (Module D) -----

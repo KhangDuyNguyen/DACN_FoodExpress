@@ -9,6 +9,7 @@ import vn.hutech.fooddelivery.common.NotFoundException;
 import vn.hutech.fooddelivery.common.PageResponse;
 import vn.hutech.fooddelivery.order.OrderRepository.LockedOrder;
 import vn.hutech.fooddelivery.order.OrderStatusFlow.Actor;
+import vn.hutech.fooddelivery.order.dto.AdminOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.ChangeOrderStatusRequest;
 import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
@@ -123,6 +124,22 @@ public class OrderManagementService {
             throw new ForbiddenException("Đơn này không phải đơn bạn đang giao");
         }
         changeStatus(order, Actor.DRIVER, toStatus, driverUserId, null);
+        return orderService.getDetail(orderId);
+    }
+
+    // ----- Admin (tuan 6) -----
+
+    /** Don toan san cho admin, moi nhat truoc. Chi doc, khong doi gi. */
+    @Transactional(readOnly = true)
+    public PageResponse<AdminOrderSummaryResponse> listAdminOrders(AdminOrderFilter filter, int page, int size) {
+        long offset = (long) page * size;
+        return PageResponse.of(orderRepository.findAdminSummaries(filter, size, offset), page, size,
+                orderRepository.countAdmin(filter));
+    }
+
+    /** Admin xem chi tiet bat ky don nao (khong kiem tra so huu nhu khach / chu quan). */
+    @Transactional(readOnly = true)
+    public OrderDetailResponse getAdminOrder(long orderId) {
         return orderService.getDetail(orderId);
     }
 
