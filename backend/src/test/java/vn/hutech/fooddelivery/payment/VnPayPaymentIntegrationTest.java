@@ -62,7 +62,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.vnpay.tmn-code=" + VnPayPaymentIntegrationTest.TMN_CODE,
         "app.vnpay.hash-secret=" + VnPayPaymentIntegrationTest.SECRET,
         "app.vnpay.pay-url=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
-        "app.vnpay.return-url=http://localhost:5173/payment/vnpay-return"
+        "app.vnpay.return-url=http://localhost:5173/payment/vnpay-return",
+        // Tat tac vu quet dinh ky; test goi thang vnPayService.settleExpiredPayments() cho chu dong
+        "app.vnpay.cleanup.enabled=false"
 })
 @AutoConfigureMockMvc
 @Testcontainers
@@ -90,6 +92,9 @@ class VnPayPaymentIntegrationTest {
 
     @MockitoBean
     VnPayClient vnPayClient;
+
+    @Autowired
+    VnPayService vnPayService;
 
     // ----- Dat don -----
 
@@ -335,6 +340,74 @@ class VnPayPaymentIntegrationTest {
 
         assertEquals("CANCELLED", orderStatus(orderId));
         assertEquals("FAILED", paymentOf(orderId).get("status"));
+    }
+
+    // ----- Tu huy don qua han thanh toan (Module L, tuan 6) -----
+
+    @Test
+    void expiredUnpaidOrderIsCancelledAfterAskingVnPay() throws Exception {
+        JsonNode order = placeOrder(login("0911000001"), "VNPAY");
+        long orderId = order.get("id").asLong();
+        String code = order.get("code").asText();
+        makeOverdue(orderId);
+        // 91 = VNPay khong co giao dich nao voi ma nay: chac chan chua ai bi tru tien
+        when(vnPayClient.queryTransaction(eq(code), any())).thenReturn(new VnPayClient.QueryResult(
+                "91", null, null, Map.of("vnp_ResponseCode", "91")));
+
+        assertEquals(1, vnPayService.settleExpiredPayments());
+
+        verify(vnPayClient).queryTransaction(eq(code), any());
+        assertEquals("CANCELLED", orderStatus(orderId));
+        // Ma 11 cua VNPay = "Đã hết hạn chờ thanh toán"
+        assertEquals("Thanh toán VNPay không thành công (mã 11)", jdbc.queryForObject(
+                "SELECT cancel_reason FROM orders WHERE id = :id", Map.of("id", orderId), String.class));
+        assertEquals("FAILED", paymentOf(orderId).get("status"));
+        verify(assignmentService, never()).createOffer(anyLong());
+    }
+
+    @Test
+    void expiredOrderThatVnPaySaysIsPaidIsConfirmedNotCancelled() throws Exception {
+        JsonNode order = placeOrder(login("0911000001"), "VNPAY");
+        long orderId = order.get("id").asLong();
+        String code = order.get("code").asText();
+        makeOverdue(orderId);
+        // Khach tra sat gio nhung IPN chua toi: VNPay bao da tra -> xac nhan don, khong huy nham
+        when(vnPayClient.queryTransaction(eq(code), any())).thenReturn(new VnPayClient.QueryResult(
+                "00", "00", vnpAmount(order), Map.of("vnp_TransactionStatus", "00")));
+
+        assertEquals(1, vnPayService.settleExpiredPayments());
+
+        assertEquals("PLACED", orderStatus(orderId));
+        assertEquals("SUCCESS", paymentOf(orderId).get("status"));
+        verify(assignmentService).createOffer(orderId);
+    }
+
+    @Test
+    void freshOrdersAndUnreachableVnPayAreLeftAlone() throws Exception {
+        JsonNode fresh = placeOrder(login("0911000001"), "VNPAY");
+        JsonNode overdue = placeOrder(login("0911000001"), "VNPAY");
+        makeOverdue(overdue.get("id").asLong());
+        // VNPay khong tra loi duoc (loi mang, sai chu ky...): de nguyen, lan quet sau hoi lai
+        when(vnPayClient.queryTransaction(any(), any())).thenReturn(new VnPayClient.QueryResult(
+                "99", null, null, Map.of()));
+
+        assertEquals(0, vnPayService.settleExpiredPayments());
+
+        // Don moi tao chua qua han: khong hoi VNPay
+        verify(vnPayClient, never()).queryTransaction(eq(fresh.get("code").asText()), any());
+        assertEquals("PENDING_PAYMENT", orderStatus(fresh.get("id").asLong()));
+        assertEquals("PENDING_PAYMENT", orderStatus(overdue.get("id").asLong()));
+        assertEquals("PENDING", paymentOf(overdue.get("id").asLong()).get("status"));
+
+        // Tra lai thoi diem cu de giao dich nay khong lam lech so dem cua test khac (test chay khong theo thu tu co dinh)
+        jdbc.update("UPDATE payments SET created_at = created_at + INTERVAL 20 MINUTE WHERE order_id = :id",
+                Map.of("id", overdue.get("id").asLong()));
+    }
+
+    /** Lui thoi diem tao giao dich 20 phut, nhu the khach da bo trang VNPay qua 15 phut. */
+    private void makeOverdue(long orderId) {
+        jdbc.update("UPDATE payments SET created_at = created_at - INTERVAL 20 MINUTE WHERE order_id = :id",
+                Map.of("id", orderId));
     }
 
     // ----- Ham tien ich -----
