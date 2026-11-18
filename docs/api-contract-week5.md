@@ -204,6 +204,26 @@ Những điểm chốt khi làm (khác hoặc chi tiết hơn bản kế hoạch
 
 Còn phải làm khi có mã TMN: thử thật trên sandbox bằng thẻ NCB (thành công, khách bấm hủy), xem `querydr` trả gì với giao dịch bị hủy, và kiểm tra chữ ký phản hồi `querydr`. Tài liệu chỉ ghi thứ tự trường, còn trường bỏ trống thì nhóm đang để chuỗi rỗng.
 
+## Module J. Hồ sơ khách (`feature/khang-tuan05-ho-so`, duyệt 18/11)
+
+Mục "Hồ sơ khách" trong bảng dời việc ở cuối file, làm nốt trong tuần 5.
+
+| Method | URL | Body | Trả về |
+|---|---|---|---|
+| PUT | `/api/users/me` | `{ "fullName", "email" }` | Thông tin user mới (`UserResponse`, giống `GET /api/users/me`) |
+| PUT | `/api/users/me/password` | `{ "currentPassword", "newPassword" }` | 204 |
+
+Luật:
+- Cần đăng nhập, vai trò nào cũng được (chỉ sửa chính mình, id lấy từ JWT, không nhận id từ client).
+- Họ tên: bắt buộc, tối đa 100 ký tự, cắt khoảng trắng. Email: không bắt buộc (để trống là bỏ email), cắt khoảng trắng, đổi sang chữ thường như lúc đăng ký. Email đã thuộc tài khoản khác → 409 "Email đã được đăng ký".
+- Số điện thoại không đổi được (dùng để đăng nhập).
+- Đổi mật khẩu: sai mật khẩu hiện tại → 400 "Mật khẩu hiện tại không đúng"; mật khẩu mới 8–72 ký tự như lúc đăng ký (BCrypt chỉ dùng 72 byte đầu); trùng mật khẩu cũ → 400. Lưu bằng BCrypt.
+- Đổi mật khẩu không thu hồi token đang dùng (JWT còn hạn đến 24 giờ); muốn thu hồi cần thêm cột phiên bản token, chưa làm.
+
+Web: trang `/profile` (sửa họ tên, email, đổi mật khẩu, link sang sổ địa chỉ); bấm tên trên thanh đầu trang sẽ vào trang này.
+
+Test: `UserProfileIntegrationTest`.
+
 ## Gộp PR #18 của An (chốt 17/11)
 
 #18 (`feature/an-tuan5-delivery-earnings`) làm lại luồng tài xế giao hàng mà Module E đã đưa vào `main` (#21), theo luồng khác (thêm `PICKED_UP`, tài xế nhận đơn thì đơn tự sang `PREPARING`) và trùng API `PATCH /api/driver/orders/{id}/status`. Nhóm chốt:
@@ -220,7 +240,7 @@ Còn phải làm khi có mã TMN: thử thật trên sandbox bằng thẻ NCB (t
 |---|---|
 | MoMo sandbox | Làm sau VNPay, dùng chung bảng `payments` (tuần 6) |
 | Tùy chọn món (size, topping) trong giỏ và đơn | Sửa nhiều phần giỏ và đơn, dùng dữ liệu của Dưỡng (tuần 6) |
-| Hồ sơ khách (sửa tên, email, đổi mật khẩu) | Nhỏ, làm nếu tuần 5 dư thời gian |
+| Hồ sơ khách (sửa tên, email, đổi mật khẩu) | Đã làm ở Module J |
 | Hoàn tiền VNPay, tự hủy đơn chờ thanh toán quá 15 phút | Tuần 6–7 cùng phần admin; tuần 5 ghi `TODO(khang)` |
 | Phối hợp An cập nhật PR #18 theo `main` | Đã chốt cách gộp, xem mục "Gộp PR #18 của An" ở trên |
 
