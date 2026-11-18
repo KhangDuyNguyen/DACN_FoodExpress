@@ -41,6 +41,7 @@ public final class OrderStatusFlow {
     );
 
     private static final Map<String, String> LABELS = Map.of(
+            "PENDING_PAYMENT", "Chờ thanh toán",
             "PLACED", "Chờ xác nhận",
             "PREPARING", "Đang chuẩn bị",
             "READY_FOR_PICKUP", "Chờ lấy món",

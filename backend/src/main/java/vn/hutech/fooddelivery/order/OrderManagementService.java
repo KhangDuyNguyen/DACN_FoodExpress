@@ -7,6 +7,7 @@ import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
 import vn.hutech.fooddelivery.common.PageResponse;
+import vn.hutech.fooddelivery.order.OrderRepository.LockedOrder;
 import vn.hutech.fooddelivery.order.OrderStatusFlow.Actor;
 import vn.hutech.fooddelivery.order.dto.ChangeOrderStatusRequest;
 import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
@@ -49,14 +50,14 @@ public class OrderManagementService {
 
     @Transactional(readOnly = true)
     public OrderDetailResponse getCustomerOrder(long customerId, long orderId) {
-        checkCustomerOwns(findOrder(orderId), customerId);
+        checkCustomerOwns(findOrder(orderId).customerId(), customerId);
         return orderService.getDetail(orderId);
     }
 
     @Transactional
     public OrderDetailResponse cancelByCustomer(long customerId, long orderId, String reason) {
-        OrderRow order = findOrder(orderId);
-        checkCustomerOwns(order, customerId);
+        LockedOrder order = lockOrder(orderId);
+        checkCustomerOwns(order.customerId(), customerId);
         changeStatus(order, Actor.CUSTOMER, "CANCELLED", customerId, reason.trim());
         return orderService.getDetail(orderId);
     }
@@ -89,14 +90,18 @@ public class OrderManagementService {
 
     @Transactional(readOnly = true)
     public OrderDetailResponse getMerchantOrder(long ownerUserId, long orderId) {
-        checkMerchantOwns(findOrder(orderId), ownerUserId);
+        checkMerchantOwns(findOrder(orderId).restaurantId(), ownerUserId);
+        // Don VNPay chua tra tien (dang cho, hoac da huy vi thanh toan loi): quan chua tung nhan, giong danh sach
+        if (!orderRepository.isVisibleToMerchant(orderId)) {
+            throw new NotFoundException("Không tìm thấy đơn hàng");
+        }
         return orderService.getDetail(orderId);
     }
 
     @Transactional
     public OrderDetailResponse changeStatusByMerchant(long ownerUserId, long orderId, ChangeOrderStatusRequest req) {
-        OrderRow order = findOrder(orderId);
-        checkMerchantOwns(order, ownerUserId);
+        LockedOrder order = lockOrder(orderId);
+        checkMerchantOwns(order.restaurantId(), ownerUserId);
         // Chi luu ly do khi huy don
         String reason = "CANCELLED".equals(req.status()) ? req.reason().trim() : null;
         changeStatus(order, Actor.MERCHANT, req.status(), ownerUserId, reason);
@@ -112,7 +117,7 @@ public class OrderManagementService {
      */
     @Transactional
     public OrderDetailResponse changeStatusByDriver(long driverUserId, long orderId, String toStatus) {
-        OrderRow order = findOrder(orderId);
+        LockedOrder order = lockOrder(orderId);
         Long driverId = orderRepository.findDriverIdByUserId(driverUserId).orElse(null);
         if (driverId == null || !driverId.equals(order.driverId())) {
             throw new ForbiddenException("Đơn này không phải đơn bạn đang giao");
@@ -124,13 +129,15 @@ public class OrderManagementService {
     // ----- Dung chung -----
 
     /**
-     * Doi trang thai trong cung transaction voi ham goi:
+     * Doi trang thai trong cung transaction voi ham goi. Don da duoc doc kem KHOA DONG (lockOrder),
+     * nen cac kiem tra duoi day dung tren du lieu moi nhat, khong ai chen vao giua:
      *   1. Luat chuyen (OrderStatusFlow) khong cho phep -> 409.
-     *   2. UPDATE ... WHERE status = trang thai vua doc; 0 dong nghia la co nguoi vua doi truoc -> 409.
-     *   3. Ghi them 1 dong lich su (ai doi, luc nao, ly do).
-     *   4. Phat OrderStatusChangedEvent; ben nghe chi chay sau khi transaction commit.
+     *   2. Tai xe da nhan don thi khong huy duoc nua -> 409.
+     *   3. UPDATE ... WHERE status = trang thai vua doc; 0 dong nghia la co nguoi vua doi truoc -> 409.
+     *   4. Ghi them 1 dong lich su (ai doi, luc nao, ly do).
+     *   5. Phat OrderStatusChangedEvent; ben nghe chi chay sau khi transaction commit.
      */
-    private void changeStatus(OrderRow order, Actor actor, String toStatus, long changedBy, String reason) {
+    private void changeStatus(LockedOrder order, Actor actor, String toStatus, long changedBy, String reason) {
         boolean hasDriver = order.driverId() != null;
         if (actor == Actor.MERCHANT && hasDriver && OrderStatusFlow.isDeliveryStep(toStatus)) {
             throw new ConflictException("Đơn đã có tài xế nhận, bước giao hàng do tài xế cập nhật");
@@ -139,28 +146,41 @@ public class OrderManagementService {
             throw new ConflictException("Không thể chuyển đơn từ \"" + OrderStatusFlow.label(order.status())
                     + "\" sang \"" + OrderStatusFlow.label(toStatus) + "\"");
         }
+        // Quy tac tu PR #18 cua An: tai xe da nhan don (orders.driver_id da gan khi tai xe bam nhan)
+        // thi khach va quan khong huy duoc nua, vi chua co nghiep vu huy hay gan lai cho tai xe.
+        if ("CANCELLED".equals(toStatus) && hasDriver) {
+            throw new ConflictException("Tài xế đã nhận giao đơn, chưa thể hủy đơn hàng");
+        }
         int updated = orderRepository.updateStatus(order.id(), order.status(), toStatus, reason);
         if (updated == 0) {
             throw new ConflictException("Đơn vừa được cập nhật, vui lòng tải lại trang");
         }
         orderRepository.insertStatusHistory(order.id(), toStatus, changedBy, reason);
+        // TODO(khang): don VNPay da tra tien ma bi huy (khach hoac quan huy) thi tao yeu cau hoan tien (tuan 6-7)
         events.publishEvent(new OrderStatusChangedEvent(order.id(), order.restaurantId(), order.customerId(),
                 order.status(), toStatus, changedBy));
     }
 
+    /** Doc don de xem (khong khoa). */
     private OrderRow findOrder(long orderId) {
         return orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn hàng"));
     }
 
-    private static void checkCustomerOwns(OrderRow order, long customerId) {
-        if (order.customerId() != customerId) {
+    /** Doc don de DOI TRANG THAI: khoa dong don den het transaction. */
+    private LockedOrder lockOrder(long orderId) {
+        return orderRepository.lockForUpdate(orderId)
+                .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn hàng"));
+    }
+
+    private static void checkCustomerOwns(long orderCustomerId, long customerId) {
+        if (orderCustomerId != customerId) {
             throw new ForbiddenException("Bạn không có quyền xem đơn hàng này");
         }
     }
 
-    private void checkMerchantOwns(OrderRow order, long ownerUserId) {
-        if (!orderRepository.isRestaurantOwnedBy(order.restaurantId(), ownerUserId)) {
+    private void checkMerchantOwns(long restaurantId, long ownerUserId) {
+        if (!orderRepository.isRestaurantOwnedBy(restaurantId, ownerUserId)) {
             throw new ForbiddenException("Đơn này không thuộc quán của bạn");
         }
     }
