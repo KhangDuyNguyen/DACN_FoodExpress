@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -76,6 +77,26 @@ public class PaymentRepository {
                 """;
         return jdbc.query(sql, Map.of("method", method, "transactionRef", transactionRef), MAPPER)
                 .stream().findFirst();
+    }
+
+    /**
+     * Giao dich con PENDING tao truoc thoi diem createdBefore (da qua han thanh toan), cu nhat truoc.
+     * created_at luu gio Viet Nam (= vnp_CreateDate) nen createdBefore cung phai tinh theo gio Viet Nam.
+     * Lay toi da limit dong moi lan quet de 1 lan quet khong qua lau.
+     */
+    public List<PaymentRow> findPendingCreatedBefore(String method, LocalDateTime createdBefore, int limit) {
+        String sql = """
+                SELECT id, order_id, method, amount, status, transaction_ref, created_at
+                FROM payments
+                WHERE method = :method AND status = 'PENDING' AND created_at < :createdBefore
+                ORDER BY id
+                LIMIT :limit
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("method", method)
+                .addValue("createdBefore", createdBefore)
+                .addValue("limit", limit);
+        return jdbc.query(sql, params, MAPPER);
     }
 
     /**
