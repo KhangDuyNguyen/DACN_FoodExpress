@@ -79,7 +79,7 @@ class OrderTrackingIntegrationTest {
                 VALUES (:orderId, 'TRACKING-1', :owner, 1, :driver, 'DELIVERING',
                         'Tracking Test', '0900610001', 'Test address', 10.76, 106.66, 50000, 50000),
                        (:otherOrder, 'TRACKING-2', :otherCustomer, 1, :driver, 'DELIVERING',
-                        'Tracking Test', '0900610002', 'Test address', 10.76, 106.66, 50000, 50000)
+                        'Tracking Test', '0900610002', 'Test address', 10.75, 106.65, 50000, 50000)
                 """, Map.of("orderId", ORDER, "owner", OWNER, "driver", DRIVER,
                 "otherOrder", OTHER_ORDER, "otherCustomer", OTHER_CUSTOMER));
     }
@@ -95,6 +95,8 @@ class OrderTrackingIntegrationTest {
                 .andExpect(jsonPath("$.orderId").value(ORDER))
                 .andExpect(jsonPath("$.orderCode").value("TRACKING-1"))
                 .andExpect(jsonPath("$.status").value("DELIVERING"))
+                .andExpect(jsonPath("$.deliveryPoint.lat").value(10.76))
+                .andExpect(jsonPath("$.deliveryPoint.lng").value(106.66))
                 .andExpect(jsonPath("$.latestLocation.lat").value(10.79))
                 .andExpect(jsonPath("$.latestLocation.lng").value(106.69))
                 .andExpect(jsonPath("$.latestLocation.recordedAt").value("2026-11-18T10:15:30.123"));
@@ -107,13 +109,17 @@ class OrderTrackingIntegrationTest {
         tracking(ORDER, OTHER_CUSTOMER, "CUSTOMER")
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403))
-                .andExpect(jsonPath("$.latestLocation").doesNotExist());
+                .andExpect(jsonPath("$.latestLocation").doesNotExist())
+                .andExpect(jsonPath("$.deliveryPoint").doesNotHaveJsonPath());
     }
 
     @Test
-    void noOrderGpsReturnsExplicitNullDespiteDriverProfileLocation() throws Exception {
+    void ownerGetsDeliveryPointEvenWithoutOrderGps() throws Exception {
         tracking(ORDER, OWNER, "CUSTOMER")
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deliveryPoint.lat").value(10.76))
+                .andExpect(jsonPath("$.deliveryPoint.lng").value(106.66))
+                .andExpect(jsonPath("$.deliveryPoint.recordedAt").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.latestLocation").value(nullValue()));
     }
 
@@ -147,8 +153,10 @@ class OrderTrackingIntegrationTest {
 
     @Test
     void trackingRequiresCustomerRole() throws Exception {
-        mockMvc.perform(get(URL, ORDER)).andExpect(status().isUnauthorized());
-        tracking(ORDER, DRIVER_USER, "DRIVER").andExpect(status().isForbidden());
+        mockMvc.perform(get(URL, ORDER)).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.deliveryPoint").doesNotHaveJsonPath());
+        tracking(ORDER, DRIVER_USER, "DRIVER").andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.deliveryPoint").doesNotHaveJsonPath());
     }
 
     private ResultActions tracking(long orderId, long userId, String role) throws Exception {

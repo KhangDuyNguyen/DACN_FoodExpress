@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
@@ -42,13 +43,15 @@ class DriverStatusServiceTest {
     DriverRepository driverRepository;
     @Mock
     DriverLocationRepository driverLocationRepository;
+    @Mock
+    ApplicationEventPublisher events;
     DriverService service;
 
     @BeforeEach
     void setUp() {
         // Test co dinh bien 60 giay, ke ca khi dong ho thuc te dang o phan le cua giay.
         Clock clock = Clock.fixed(Instant.parse("2026-10-28T14:00:00.987Z"), ZoneId.of("Asia/Ho_Chi_Minh"));
-        service = new DriverService(driverRepository, driverLocationRepository, clock);
+        service = new DriverService(driverRepository, driverLocationRepository, events, clock);
     }
 
     @ParameterizedTest

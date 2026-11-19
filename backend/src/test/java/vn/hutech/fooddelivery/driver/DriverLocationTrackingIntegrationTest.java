@@ -186,13 +186,14 @@ class DriverLocationTrackingIntegrationTest {
             assertTrue(releaseGps.await(30, TimeUnit.SECONDS), "GPS did not receive the release signal");
             return lockedIds;
         }).doCallRealMethod().when(locations).lockActiveOrderIds(driver.userId());
+        // Only the first lock is the concurrency checkpoint. The earnings listener locks the same order again.
         doAnswer(invocation -> {
             assertEquals(1L, releaseGps.getCount(), "Completion must reach the lock before GPS is released");
             completionReachedOrderLock.countDown();
             var lockedOrder = invocation.callRealMethod();
             assertEquals(0L, releaseGps.getCount(), "Completion acquired the order lock before GPS was released");
             return lockedOrder;
-        }).when(orderRepository).lockForUpdate(orderId);
+        }).doCallRealMethod().when(orderRepository).lockForUpdate(orderId);
 
         try (var executor = Executors.newFixedThreadPool(2)) {
             var gps = executor.submit(() -> location(driver, "10.78").andExpect(status().isCreated()));

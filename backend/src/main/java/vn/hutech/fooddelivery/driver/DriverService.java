@@ -2,6 +2,7 @@ package vn.hutech.fooddelivery.driver;
 
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,6 +15,7 @@ import vn.hutech.fooddelivery.driver.dto.DriverLocationRequest;
 import vn.hutech.fooddelivery.driver.dto.DriverLocationResponse;
 import vn.hutech.fooddelivery.driver.dto.DriverStatusRequest;
 import vn.hutech.fooddelivery.driver.dto.DriverStatusResponse;
+import vn.hutech.fooddelivery.tracking.OrderTrackingLocationSavedEvent;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -28,16 +30,20 @@ public class DriverService {
 
     private final DriverRepository driverRepository;
     private final DriverLocationRepository driverLocationRepository;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     @Autowired
-    public DriverService(DriverRepository driverRepository, DriverLocationRepository driverLocationRepository) {
-        this(driverRepository, driverLocationRepository, Clock.systemDefaultZone());
+    public DriverService(DriverRepository driverRepository, DriverLocationRepository driverLocationRepository,
+                         ApplicationEventPublisher events) {
+        this(driverRepository, driverLocationRepository, events, Clock.systemDefaultZone());
     }
 
-    DriverService(DriverRepository driverRepository, DriverLocationRepository driverLocationRepository, Clock clock) {
+    DriverService(DriverRepository driverRepository, DriverLocationRepository driverLocationRepository,
+                  ApplicationEventPublisher events, Clock clock) {
         this.driverRepository = driverRepository;
         this.driverLocationRepository = driverLocationRepository;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -74,6 +80,9 @@ public class DriverService {
         driverLocationRepository.insert(driverId, trackingOrderId, lat, lng, recordedAt);
         if (driverRepository.updateLocation(driverId, lat, lng, recordedAt) != 1) {
             throw new NotFoundException("Không tìm thấy hồ sơ tài xế");
+        }
+        if (trackingOrderId != null) {
+            events.publishEvent(new OrderTrackingLocationSavedEvent(trackingOrderId, lat, lng, recordedAt));
         }
         return new DriverLocationResponse(lat, lng, recordedAt);
     }

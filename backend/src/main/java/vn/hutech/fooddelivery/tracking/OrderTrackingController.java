@@ -21,7 +21,8 @@ public class OrderTrackingController {
 
     @GetMapping("/{id}/tracking")
     @Operation(summary = "Xem trạng thái và vị trí giao hàng gần nhất của đơn mình đặt",
-            description = "latestLocation là null khi đơn chưa có vị trí từ tài xế đang được gán.")
+            description = "deliveryPoint là tọa độ điểm giao của đơn. "
+                    + "latestLocation là null khi đơn chưa có vị trí từ tài xế đang được gán.")
     public ResponseEntity<OrderTrackingResponse> getTracking(@AuthenticationPrincipal AuthUser user,
                                                              @PathVariable long id) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())

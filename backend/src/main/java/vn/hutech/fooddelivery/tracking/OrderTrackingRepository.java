@@ -25,7 +25,9 @@ public class OrderTrackingRepository {
 
     Optional<TrackingOrder> findTracking(long orderId, long customerId) {
         String sql = """
-                SELECT o.id, o.code, o.status, o.customer_id, loc.lat, loc.lng, loc.recorded_at
+                SELECT o.id, o.code, o.status, o.customer_id, loc.lat, loc.lng, loc.recorded_at,
+                       CASE WHEN o.customer_id = :customerId THEN o.delivery_lat END AS delivery_lat,
+                       CASE WHEN o.customer_id = :customerId THEN o.delivery_lng END AS delivery_lng
                 FROM orders o
                 LEFT JOIN driver_locations loc ON loc.id = (
                     SELECT l.id
@@ -41,8 +43,12 @@ public class OrderTrackingRepository {
             LocalDateTime recordedAt = rs.getObject("recorded_at", LocalDateTime.class);
             OrderTrackingResponse.Location location = recordedAt == null ? null :
                     new OrderTrackingResponse.Location(rs.getBigDecimal("lat"), rs.getBigDecimal("lng"), recordedAt);
+            var deliveryLat = rs.getBigDecimal("delivery_lat");
+            var deliveryPoint = deliveryLat == null ? null :
+                    new OrderTrackingResponse.DeliveryPoint(deliveryLat, rs.getBigDecimal("delivery_lng"));
             return new TrackingOrder(rs.getLong("customer_id"),
-                    new OrderTrackingResponse(rs.getLong("id"), rs.getString("code"), rs.getString("status"), location));
+                    new OrderTrackingResponse(rs.getLong("id"), rs.getString("code"), rs.getString("status"),
+                            location, deliveryPoint));
         }).stream().findFirst();
     }
 

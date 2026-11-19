@@ -1,3 +1,6 @@
+import groovy.json.JsonOutput
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.hilt.android)
@@ -5,6 +8,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+val vietmapTilemapKey = providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+    .asText.orElse("").map { content ->
+        Properties().apply { load(content.reader()) }.getProperty("VIETMAP_TILEMAP_KEY", "").trim()
+    }
 
 android {
     namespace = "vn.hutech.foodexpress.customer"
@@ -25,6 +33,13 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    buildTypes {
+        debug {
+            buildConfigField("String", "VIETMAP_TILEMAP_KEY", JsonOutput.toJson(vietmapTilemapKey.get()))
+        }
     }
 }
 
@@ -48,4 +63,9 @@ dependencies {
     implementation(libs.retrofit.converter.gson)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("com.github.vietmap-company:maps-sdk-android:3.1.0")
+    debugImplementation("com.github.vietmap-company:vietmap-services-geojson-android:1.0.0")
+    testImplementation("junit:junit:4.13.2")
 }
