@@ -57,6 +57,7 @@ data class DriverGpsSnapshot(val status: DriverGpsStatus = DriverGpsStatus.STOPP
 class DriverForegroundLocationSource @Inject constructor(@param:ApplicationContext private val context: Context) {
     private val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private var requested = false
+    private var intervalMillis = DriverLocationPolicy.FIX_INTERVAL_MS
     private var listening = false
     private var registeredProviders = emptySet<String>()
     private var latest: DriverLocationFix? = null
@@ -75,7 +76,11 @@ class DriverForegroundLocationSource @Inject constructor(@param:ApplicationConte
 
     fun nowNanos(): Long = SystemClock.elapsedRealtimeNanos()
 
-    fun start(): DriverGpsSnapshot {
+    fun start(fixIntervalMillis: Long = DriverLocationPolicy.FIX_INTERVAL_MS): DriverGpsSnapshot {
+        if (intervalMillis != fixIntervalMillis) {
+            removeListeners()
+            intervalMillis = fixIntervalMillis
+        }
         requested = true
         return refresh()
     }
@@ -104,7 +109,7 @@ class DriverForegroundLocationSource @Inject constructor(@param:ApplicationConte
             } else {
                 if (!listening || providers.toSet() != registeredProviders) {
                     removeListeners()
-                    providers.forEach { manager.requestLocationUpdates(it, DriverLocationPolicy.FIX_INTERVAL_MS, 0f, listener, Looper.getMainLooper()) }
+                    providers.forEach { manager.requestLocationUpdates(it, intervalMillis, 0f, listener, Looper.getMainLooper()) }
                     listening = true
                     registeredProviders = providers.toSet()
                 }

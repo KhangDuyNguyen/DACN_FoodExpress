@@ -2,6 +2,7 @@ package vn.hutech.fooddelivery.driver;
 
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
@@ -14,28 +15,35 @@ import vn.hutech.fooddelivery.driver.dto.DriverLocationRequest;
 import vn.hutech.fooddelivery.driver.dto.DriverLocationResponse;
 import vn.hutech.fooddelivery.driver.dto.DriverStatusRequest;
 import vn.hutech.fooddelivery.driver.dto.DriverStatusResponse;
+import vn.hutech.fooddelivery.tracking.OrderTrackingLocationSavedEvent;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
+import java.util.Set;
 
 @Service
 public class DriverService {
 
     private final DriverRepository driverRepository;
     private final DriverLocationRepository driverLocationRepository;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     @Autowired
-    public DriverService(DriverRepository driverRepository, DriverLocationRepository driverLocationRepository) {
-        this(driverRepository, driverLocationRepository, Clock.systemDefaultZone());
+    public DriverService(DriverRepository driverRepository, DriverLocationRepository driverLocationRepository,
+                         ApplicationEventPublisher events) {
+        this(driverRepository, driverLocationRepository, events, Clock.systemDefaultZone());
     }
 
-    DriverService(DriverRepository driverRepository, DriverLocationRepository driverLocationRepository, Clock clock) {
+    DriverService(DriverRepository driverRepository, DriverLocationRepository driverLocationRepository,
+                  ApplicationEventPublisher events, Clock clock) {
         this.driverRepository = driverRepository;
         this.driverLocationRepository = driverLocationRepository;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -58,20 +66,43 @@ public class DriverService {
         return getProfile(userId);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
     public DriverLocationResponse recordLocation(long userId, DriverLocationRequest request) {
-        // Khoa cung mot driver de hai request vi tri khong ghi history va snapshot xen ke nhau.
+        // Lock Order before Driver, including READY_FOR_PICKUP orders that could start delivery.
+        var lockedOrderIds = new HashSet<>(driverLocationRepository.lockActiveOrderIds(userId));
         long driverId = driverRepository.findIdByUserIdForUpdate(userId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy hồ sơ tài xế"));
+        Long trackingOrderId = findTrackingOrderId(driverId, lockedOrderIds);
         var lat = request.lat().setScale(7, RoundingMode.HALF_UP);
         var lng = request.lng().setScale(7, RoundingMode.HALF_UP);
         // drivers.last_location_at la DATETIME(0); dung cung thoi diem cho ca hai bang.
         var recordedAt = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
-        driverLocationRepository.insert(driverId, lat, lng, recordedAt);
+        driverLocationRepository.insert(driverId, trackingOrderId, lat, lng, recordedAt);
         if (driverRepository.updateLocation(driverId, lat, lng, recordedAt) != 1) {
             throw new NotFoundException("Không tìm thấy hồ sơ tài xế");
         }
+        if (trackingOrderId != null) {
+            events.publishEvent(new OrderTrackingLocationSavedEvent(trackingOrderId, lat, lng, recordedAt));
+        }
         return new DriverLocationResponse(lat, lng, recordedAt);
+    }
+
+    private Long findTrackingOrderId(long driverId, Set<Long> lockedOrderIds) {
+        Long deliveringOrderId = null;
+        for (var order : driverLocationRepository.findActiveOrders(driverId)) {
+            // Accept may have committed while we waited for Driver. An INSERT with a new order ID
+            // would acquire its foreign-key lock after Driver, so leave this fix unlinked.
+            if (!lockedOrderIds.contains(order.id())) {
+                return null;
+            }
+            if ("DELIVERING".equals(order.status())) {
+                if (deliveringOrderId != null) {
+                    return null;
+                }
+                deliveringOrderId = order.id();
+            }
+        }
+        return deliveringOrderId;
     }
 
     // Independent READ_COMMITTED avoids inheriting an earlier caller snapshot.

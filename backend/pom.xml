@@ -44,6 +44,11 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-websocket</artifactId>
     </dependency>
+    <dependency>
+      <groupId>com.google.firebase</groupId>
+      <artifactId>firebase-admin</artifactId>
+      <version>9.7.1</version>
+    </dependency>
 
     <!-- MySQL + Flyway (phien ban do Spring Boot quan ly) -->
     <dependency>
