@@ -21,12 +21,12 @@ internal object DebugTrackingRouteClient {
         .callTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    suspend fun fetch(route: DebugTrackingRoutePlanner.Request): List<TrackingMapPoint>? {
+    suspend fun fetch(route: TrackingRoutePlanner.Request, simulateFailure: Boolean): List<TrackingMapPoint>? {
         val url = HttpUrl.Builder().scheme("http").host("10.0.2.2").port(18764)
             .addPathSegment("route")
             .addQueryParameter("from", "${route.from.lat},${route.from.lng}")
             .addQueryParameter("to", "${route.to.lat},${route.to.lng}")
-        if (route.simulateFailure) url.addQueryParameter("simulate_failure", "1")
+        if (simulateFailure) url.addQueryParameter("simulate_failure", "1")
 
         return suspendCancellableCoroutine { continuation ->
             val call = client.newCall(Request.Builder().url(url.build()).build())

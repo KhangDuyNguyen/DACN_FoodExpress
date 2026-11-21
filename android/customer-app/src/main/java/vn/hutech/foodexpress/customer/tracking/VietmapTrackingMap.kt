@@ -46,18 +46,27 @@ import vn.vietmap.vietmapsdk.maps.VietMapGLOptions
 import kotlin.math.roundToInt
 
 @Composable
-internal fun DebugVietmapTrackingMap(
+internal fun VietmapTrackingMap(
     layers: TrackingMapLayers,
     onStatus: (TrackingMapStatus) -> Unit,
     onDriverMarkerPosition: ((TrackingMapPoint, Rect) -> Unit)? = null,
-    controls: @Composable () -> Unit,
+    hideLogo: Boolean = true,
+    controls: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val latestOnStatus by rememberUpdatedState(onStatus)
-    val mapView = remember(context) {
-        DebugVietmapResources.initialize(context)
-        MapView(context, VietMapGLOptions.createFromAttributes(context).textureMode(true))
+    val mapView = remember(context, hideLogo) {
+        runCatching {
+            VietmapTrackingResources.initialize(context)
+            val options = VietMapGLOptions.createFromAttributes(context).textureMode(true)
+            if (hideLogo) options.logoEnabled(false)
+            MapView(context, options)
+        }.getOrNull()
+    }
+    if (mapView == null) {
+        LaunchedEffect(Unit) { latestOnStatus(TrackingMapStatus.Unavailable) }
+        return
     }
 
     var map by remember(mapView) { mutableStateOf<VietMapGL?>(null) }
@@ -68,7 +77,10 @@ internal fun DebugVietmapTrackingMap(
     var cameraUpdate by remember(mapView) { mutableIntStateOf(0) }
 
     DisposableEffect(mapView, lifecycle) {
-        mapView.onCreate(null)
+        if (runCatching { mapView.onCreate(null) }.isFailure) {
+            latestOnStatus(TrackingMapStatus.Unavailable)
+            return@DisposableEffect onDispose { runCatching { mapView.onDestroy() } }
+        }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> mapView.onStart()
@@ -81,7 +93,7 @@ internal fun DebugVietmapTrackingMap(
         lifecycle.addObserver(observer)
 
         val failure = MapView.OnDidFailLoadingMapListener {
-            Log.w(DebugVietmapResources.LogTag, "VIETMAP style or tiles could not load")
+            Log.w(VietmapTrackingResources.LogTag, "VIETMAP style or tiles could not load")
             latestOnStatus(TrackingMapStatus.Unavailable)
         }
         val frame = MapView.OnDidFinishRenderingFrameListener { fullyRendered ->
@@ -90,15 +102,6 @@ internal fun DebugVietmapTrackingMap(
                 val vietMap = map ?: return@OnDidFinishRenderingFrameListener
                 val viewport = RectF(0f, 0f, mapView.width.toFloat(), mapView.height.toFloat())
                 if (vietMap.queryRenderedFeatures(viewport).isNotEmpty()) {
-                    val settings = vietMap.uiSettings
-                    val attributionEnabled = settings.isAttributionEnabled
-                    runCatching { settings.setLogoEnabled(false) }
-                        .onFailure { Log.w(DebugVietmapResources.LogTag, "VIETMAP logo toggle failed") }
-                    Log.i(
-                        DebugVietmapResources.LogTag,
-                        "VIETMAP logo enabled=${settings.isLogoEnabled}, " +
-                            "attribution enabled=${settings.isAttributionEnabled} (was $attributionEnabled)",
-                    )
                     ready = true
                     latestOnStatus(TrackingMapStatus.Ready)
                 }
@@ -110,9 +113,12 @@ internal fun DebugVietmapTrackingMap(
         mapView.getMapAsync { vietMap ->
             map = vietMap
             vietMap.addOnCameraMoveListener(cameraMove)
-            vietMap.setStyle(Style.Builder().fromUri(DebugVietmapResources.streetStyleUri())) {
-                styleLoaded = true
-                Log.i(DebugVietmapResources.LogTag, "VIETMAP style loaded")
+            runCatching {
+                vietMap.setStyle(Style.Builder().fromUri(VietmapTrackingResources.streetStyleUri())) {
+                    styleLoaded = true
+                }
+            }.onFailure {
+                latestOnStatus(TrackingMapStatus.Unavailable)
             }
         }
 
@@ -141,13 +147,12 @@ internal fun DebugVietmapTrackingMap(
         }
         initialCameraSet = true
         vietMap.moveCamera(camera)
-        Log.i(DebugVietmapResources.LogTag, "VIETMAP initial camera positioned")
         cameraUpdate++
     }
     LaunchedEffect(mapView, ready) {
         if (!ready) {
             delay(25_000)
-            Log.w(DebugVietmapResources.LogTag, "VIETMAP map rendering timed out")
+            Log.w(VietmapTrackingResources.LogTag, "VIETMAP map rendering timed out")
             latestOnStatus(TrackingMapStatus.Unavailable)
         }
     }

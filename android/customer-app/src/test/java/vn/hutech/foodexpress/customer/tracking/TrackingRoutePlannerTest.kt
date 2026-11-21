@@ -7,9 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 
-class DebugTrackingRoutePlannerTest {
+class TrackingRoutePlannerTest {
     private var now = 0L
-    private val planner = DebugTrackingRoutePlanner { now }
+    private val planner = TrackingRoutePlanner { now }
     private val start = TrackingMapPoint(10.7744, 106.7010)
     private val mid = TrackingMapPoint(10.7754, 106.7020)
     private val destination = TrackingMapPoint(10.7772, 106.7050)
@@ -81,13 +81,13 @@ class DebugTrackingRoutePlannerTest {
     fun missingPointsAndFailedOrInvalidResponsesDoNotShowARoute() {
         planner.update(state(start).copy(deliveryPoint = null))
         assertNull(planner.display.value.ticket)
-        planner.update(state(start), simulateFailure = true)
+        planner.update(state(start))
         val failing = begin()
-        assertTrue(failing.simulateFailure)
         planner.finish(failing, null)
         assertTrue(planner.display.value.failed)
         assertNull(planner.display.value.route)
 
+        planner.clear()
         planner.update(state(start))
         planner.finish(begin(), listOf(mid, mid))
         assertTrue(planner.display.value.failed)
@@ -100,7 +100,7 @@ class DebugTrackingRoutePlannerTest {
         assertEquals(route, readyPoints())
     }
 
-    private fun begin(): DebugTrackingRoutePlanner.Request {
+    private fun begin(): TrackingRoutePlanner.Request {
         val ticket = requireNotNull(planner.display.value.ticket)
         now = ticket.startAt
         return requireNotNull(planner.begin(ticket))

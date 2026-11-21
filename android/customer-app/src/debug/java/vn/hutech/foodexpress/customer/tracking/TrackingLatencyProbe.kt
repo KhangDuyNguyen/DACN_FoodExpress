@@ -50,6 +50,40 @@ internal class TrackingLatencyProbe(
         marker.value = PlacedPin(point, bounds)
     }
 
+    /** Observe external GPS events without making any request to the driver API. */
+    suspend fun observeBackgroundGps() {
+        withContext(Dispatchers.IO) { evidence.mkdirs() }
+        var previous: TrackingMapPoint? = null
+        var sequence = 0
+        marker.filterNotNull().collect { candidate ->
+            if (candidate.point == previous) return@collect
+            val state = trackingState()
+            if (state?.orderId != orderId || state.connection != TrackingConnection.Connected ||
+                state.latestLocation?.lat != candidate.point.lat || state.latestLocation.lng != candidate.point.lng
+            ) return@collect
+            val visible = readRenderedPin(candidate) ?: return@collect
+            previous = candidate.point
+            val name = "visible-${sequence++}.png"
+            Log.i(LogTag, "VisibleGps order=$orderId lat=${candidate.point.lat} lng=${candidate.point.lng} " +
+                "observedNs=${visible.observedNs} reads=${trackingReads.get()} file=$name")
+            saveWindow(name)
+        }
+    }
+
+    private suspend fun readRenderedPin(candidate: PlacedPin): RenderedPin? {
+        repeat(25) {
+            if (marker.value != candidate) return null
+            val frame = copyWindow(candidate.bounds)
+            if (frame != null) {
+                try {
+                    if (hasDriverColors(frame.bitmap)) return RenderedPin(candidate.bounds, frame.observedNs)
+                } finally { frame.bitmap.recycle() }
+            }
+            delay(16)
+        }
+        return null
+    }
+
     suspend fun run() {
         val initialReads = trackingReads.get()
         val initialState = connectedOrder(initialReads)

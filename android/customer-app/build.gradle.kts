@@ -9,10 +9,17 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-val vietmapTilemapKey = providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+val localVietmapTilemapKey = providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
     .asText.orElse("").map { content ->
         Properties().apply { load(content.reader()) }.getProperty("VIETMAP_TILEMAP_KEY", "").trim()
     }
+val environmentVietmapTilemapKey = providers.environmentVariable("VIETMAP_TILEMAP_KEY").map { it.trim() }
+val firebaseResources = mapOf(
+    "google_app_id" to "FIREBASE_CUSTOMER_APP_ID",
+    "google_api_key" to "FIREBASE_CUSTOMER_API_KEY",
+    "project_id" to "FIREBASE_CUSTOMER_PROJECT_ID",
+    "gcm_defaultSenderId" to "FIREBASE_CUSTOMER_SENDER_ID",
+).mapValues { (_, name) -> providers.environmentVariable(name).orElse("").get().trim() }
 
 android {
     namespace = "vn.hutech.foodexpress.customer"
@@ -24,6 +31,10 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "VIETMAP_TILEMAP_KEY", JsonOutput.toJson(environmentVietmapTilemapKey.orElse("").get()))
+        if (firebaseResources.values.all { it.isNotEmpty() }) {
+            firebaseResources.forEach { (name, value) -> resValue("string", name, value) }
+        }
     }
 
     compileOptions {
@@ -38,7 +49,8 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "VIETMAP_TILEMAP_KEY", JsonOutput.toJson(vietmapTilemapKey.get()))
+            buildConfigField("String", "VIETMAP_TILEMAP_KEY",
+                JsonOutput.toJson(environmentVietmapTilemapKey.orElse(localVietmapTilemapKey).get()))
         }
     }
 }
@@ -65,7 +77,8 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-tooling-preview")
-    debugImplementation("com.github.vietmap-company:maps-sdk-android:3.1.0")
-    debugImplementation("com.github.vietmap-company:vietmap-services-geojson-android:1.0.0")
+    implementation("com.github.vietmap-company:maps-sdk-android:3.1.0")
+    implementation("com.github.vietmap-company:vietmap-services-geojson-android:1.0.0")
+    implementation("com.google.firebase:firebase-messaging:25.0.2")
     testImplementation("junit:junit:4.13.2")
 }

@@ -7,14 +7,13 @@ import kotlin.math.cos
 import kotlin.math.hypot
 
 /** Owns the route only. GPS markers still read the original tracking state. */
-internal class DebugTrackingRoutePlanner(private val nowMillis: () -> Long) {
+internal class TrackingRoutePlanner(private val nowMillis: () -> Long) {
     data class Ticket(val id: Long, val startAt: Long)
 
     data class Request(
         val ticket: Ticket,
         val from: TrackingMapPoint,
         val to: TrackingMapPoint,
-        val simulateFailure: Boolean,
     )
 
     data class Display(
@@ -23,7 +22,7 @@ internal class DebugTrackingRoutePlanner(private val nowMillis: () -> Long) {
         val failed: Boolean = false,
     )
 
-    private data class Trip(val orderId: Long, val destination: TrackingMapPoint, val simulateFailure: Boolean)
+    private data class Trip(val orderId: Long, val destination: TrackingMapPoint)
 
     private val _display = MutableStateFlow(Display())
     val display: StateFlow<Display> = _display.asStateFlow()
@@ -36,12 +35,14 @@ internal class DebugTrackingRoutePlanner(private val nowMillis: () -> Long) {
     private var inFlight: Request? = null
     private var lastStartedAt: Long? = null
 
-    fun update(state: OrderTrackingState, simulateFailure: Boolean = false) {
+    fun clear() = update(OrderTrackingState())
+
+    fun update(state: OrderTrackingState) {
         val destination = state.deliveryPoint?.takeIf { it.isValid }
         val fix = state.latestLocation?.takeIf { it.point().isValid }
         val activeTrip = if (state.orderId != null && destination != null && fix != null &&
             state.problem == null && state.connection == TrackingConnection.Connected && state.status == "DELIVERING"
-        ) Trip(state.orderId, destination, simulateFailure) else null
+        ) Trip(state.orderId, destination) else null
         if (activeTrip != trip) {
             trip = activeTrip
             latestFix = null
@@ -80,7 +81,7 @@ internal class DebugTrackingRoutePlanner(private val nowMillis: () -> Long) {
         val activeTrip = trip ?: return null
         val origin = latestFix?.point() ?: return null
         if (_display.value.ticket != ticket || inFlight != null || nowMillis() < ticket.startAt) return null
-        val request = Request(ticket, origin, activeTrip.destination, activeTrip.simulateFailure)
+        val request = Request(ticket, origin, activeTrip.destination)
         inFlight = request
         lastStartedAt = nowMillis()
         return request

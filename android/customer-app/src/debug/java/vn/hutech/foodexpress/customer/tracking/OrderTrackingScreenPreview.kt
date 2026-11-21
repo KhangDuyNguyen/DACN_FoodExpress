@@ -130,25 +130,32 @@ internal fun TrackingVietmapEmulatorPreview() {
             TrackingConnection.Connected
         },
     )
-    val planner = remember { DebugTrackingRoutePlanner(SystemClock::elapsedRealtime) }
+    val planner = remember { TrackingRoutePlanner(SystemClock::elapsedRealtime) }
     val display by planner.display.collectAsState()
     val failure = scenario == EmulatorRouteScenario.RouteFailed
-    LaunchedEffect(tracking, failure) { planner.update(tracking, simulateFailure = failure) }
+    var previousFailure by remember { mutableStateOf(false) }
+    LaunchedEffect(tracking, failure) {
+        if (failure != previousFailure) {
+            planner.clear()
+            previousFailure = failure
+        }
+        planner.update(tracking)
+    }
     LaunchedEffect(display.ticket) {
         val ticket = display.ticket ?: return@LaunchedEffect
         val waitMillis = ticket.startAt - SystemClock.elapsedRealtime()
         if (waitMillis > 0) delay(waitMillis)
         val request = planner.begin(ticket) ?: return@LaunchedEffect
-        planner.finish(request, DebugTrackingRouteClient.fetch(request))
+        planner.finish(request, DebugTrackingRouteClient.fetch(request, failure))
     }
     var mapStatus by remember {
         mutableStateOf(
-            if (DebugVietmapResources.isConfigured) TrackingMapStatus.Loading else TrackingMapStatus.Unavailable,
+            if (VietmapTrackingResources.isConfigured) TrackingMapStatus.Loading else TrackingMapStatus.Unavailable,
         )
     }
-    val mapContent: (@Composable (TrackingMapLayers) -> Unit)? = if (DebugVietmapResources.isConfigured) {
+    val mapContent: (@Composable (TrackingMapLayers) -> Unit)? = if (VietmapTrackingResources.isConfigured) {
         { layers ->
-            DebugVietmapTrackingMap(layers, onStatus = { mapStatus = it }) {
+            VietmapTrackingMap(layers, onStatus = { mapStatus = it }, hideLogo = true) {
                 Box(Modifier.fillMaxSize()) {
                     if (display.route == null && scenario != EmulatorRouteScenario.Disconnected) {
                         Box(Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 72.dp)) {

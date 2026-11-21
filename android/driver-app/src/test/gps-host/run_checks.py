@@ -52,6 +52,17 @@ class DriverProfileRepository(var profile: DriverProfile, val calls: MutableList
     "Install.kt": "package dagger.hilt\nimport kotlin.reflect.KClass\nannotation class InstallIn(vararg val value: KClass<*>)\n",
     "Component.kt": "package dagger.hilt.components\nclass SingletonComponent\n",
     "HiltVm.kt": "package dagger.hilt.android.lifecycle\nannotation class HiltViewModel\n",
+    "DriverDeliveryLocationService.kt": """
+package vn.hutech.foodexpress.driver.data.location
+
+// The Android foreground service is inactive in these standalone JVM checks.
+class DriverDeliveryLocationService {
+    companion object {
+        internal var isTracking = false
+            private set
+    }
+}
+""",
 }
 SENSOR = """
 // Sensor and monotonic clock double. Policy/models above come from production.

@@ -7,7 +7,7 @@ import vn.vietmap.vietmapsdk.Vietmap
 import vn.vietmap.vietmapsdk.log.Logger
 import vn.vietmap.vietmapsdk.module.http.HttpRequestUtil
 
-internal object DebugVietmapResources {
+internal object VietmapTrackingResources {
     const val LogTag = "TrackingVietmap"
     private const val StreetStyle = "https://maps.vietmap.vn/maps/styles/tm/style.json"
 

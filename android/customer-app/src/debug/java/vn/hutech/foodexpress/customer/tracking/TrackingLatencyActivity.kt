@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +33,7 @@ import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 import retrofit2.Retrofit
+import vn.hutech.foodexpress.customer.notification.CustomerDeviceRegistration
 import vn.hutech.foodexpress.core.ui.theme.FoodExpressTheme
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
@@ -54,7 +56,11 @@ internal class TrackingLatencyActivity : ComponentActivity() {
         val client = (retrofit.callFactory() as OkHttpClient).newBuilder().addInterceptor { chain ->
             val request = chain.request()
             if (request.method == "GET" && request.url.encodedPath == trackingPath) reads.incrementAndGet()
-            chain.proceed(request)
+            chain.proceed(request).also { response ->
+                if (fixture.registerDevice && request.method == "POST" &&
+                    request.url.encodedPath == "/api/devices/token"
+                ) Log.i("CustomerFcmProbe", "POST /api/devices/token HTTP ${response.code}")
+            }
         }.build()
         val baseUrl = HttpUrl.Builder().scheme("http").host("10.0.2.2").port(fixture.port)
             .addPathSegment("api").addPathSegment("").build()
@@ -63,12 +69,30 @@ internal class TrackingLatencyActivity : ComponentActivity() {
             initializer { OrderTrackingViewModel(RetrofitTrackingTransport(localRetrofit)) }
         })[OrderTrackingViewModel::class.java]
         val tokens = MutableStateFlow<String?>(fixture.customerToken)
+        val registration = if (fixture.registerDevice) CustomerDeviceRegistration(applicationContext, localRetrofit) else null
         val probe = TrackingLatencyProbe(
-            window, File(filesDir, "tracking-latency-evidence"), baseUrl, client,
+            window, File(filesDir, if (fixture.observeOnly) "background-gps-evidence" else "tracking-latency-evidence"), baseUrl, client,
             fixture.orderId, fixture.driverToken, reads,
         ) { tracking.state.value?.forSelection(fixture.orderId, tokens.value) }
         setContent {
-            FoodExpressTheme { TrackingTestScreen(fixture, tracking, tokens, probe) }
+            FoodExpressTheme {
+                if (registration != null) {
+                    LaunchedEffect(registration) { registration.syncWhileAuthenticated(tokens) }
+                }
+                if (fixture.observeOnly) {
+                    LaunchedEffect(probe) { probe.observeBackgroundGps() }
+                    CustomerOrderTracking(
+                        orderId = fixture.orderId,
+                        accessTokens = tokens,
+                        onBack = ::finish,
+                        onSignIn = ::finish,
+                        onDriverMarkerPosition = probe::onDriverMarkerPosition,
+                        viewModel = tracking,
+                    )
+                } else {
+                    TrackingTestScreen(fixture, tracking, tokens, probe)
+                }
+            }
         }
     }
 
@@ -93,10 +117,11 @@ internal class TrackingLatencyActivity : ComponentActivity() {
             mapStatus = mapStatus,
             onRetryMap = { mapStatus = TrackingMapStatus.Loading },
             mapContent = { layers ->
-                DebugVietmapTrackingMap(
+                VietmapTrackingMap(
                     layers = layers,
                     onStatus = { mapStatus = it },
                     onDriverMarkerPosition = probe::onDriverMarkerPosition,
+                    hideLogo = true,
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomEnd) {
                         Button(
@@ -133,11 +158,14 @@ internal class TrackingLatencyActivity : ComponentActivity() {
         val file = File(filesDir, "tracking-latency-input.json")
         return try {
             val json = JSONObject(file.readText())
+            val observeOnly = json.optBoolean("observeOnly")
             Fixture(
                 json.getLong("orderId").also { require(it > 0) },
                 json.getInt("port").also { require(it in 1024..65535) },
                 json.getString("customerToken").also { require(it.isNotBlank()) },
-                json.getString("driverToken").also { require(it.isNotBlank()) },
+                if (observeOnly) "" else json.getString("driverToken").also { require(it.isNotBlank()) },
+                observeOnly,
+                json.optBoolean("registerDevice"),
             )
         } catch (_: Exception) {
             null
@@ -146,5 +174,12 @@ internal class TrackingLatencyActivity : ComponentActivity() {
         }
     }
 
-    private class Fixture(val orderId: Long, val port: Int, val customerToken: String, val driverToken: String)
+    private class Fixture(
+        val orderId: Long,
+        val port: Int,
+        val customerToken: String,
+        val driverToken: String,
+        val observeOnly: Boolean,
+        val registerDevice: Boolean,
+    )
 }
