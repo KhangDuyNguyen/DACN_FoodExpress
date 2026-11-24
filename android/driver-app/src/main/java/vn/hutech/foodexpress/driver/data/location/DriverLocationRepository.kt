@@ -18,11 +18,16 @@ class DriverLocationRepository @Inject constructor(
     private val api: DriverLocationApi,
     private val auth: DriverAuthRepository,
 ) {
-    suspend fun record(fix: DriverLocationFix, nowNanos: Long): DriverLocationResult {
+    suspend fun record(
+        fix: DriverLocationFix,
+        nowNanos: Long,
+        expectedSession: String? = null,
+    ): DriverLocationResult {
         if (DriverLocationPolicy.problem(fix, nowNanos) != null) {
             return DriverLocationResult.Failed("Vị trí chưa đủ mới hoặc chính xác. Vui lòng thử lại GPS.")
         }
         val token = auth.currentAccessToken() ?: return DriverLocationResult.SessionExpired
+        if (expectedSession != null && token != expectedSession) return DriverLocationResult.SessionExpired
         return withTimeoutOrNull(DriverLocationPolicy.HTTP_TIMEOUT_MS) {
             val response = try {
                 api.recordLocation("Bearer $token", DriverLocationRequest(fix.lat, fix.lng))

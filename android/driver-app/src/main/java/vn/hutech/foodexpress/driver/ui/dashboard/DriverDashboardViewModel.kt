@@ -211,7 +211,8 @@ class DriverDashboardViewModel @Inject constructor(
                     requestOffline("GPS không còn sẵn sàng. Đang yêu cầu Offline; chưa xác nhận cho đến khi máy chủ phản hồi.")
                 if (offlineNeeded && offJob?.isActive != true && now - lastOffAttempt >= DriverLocationPolicy.OFF_RETRY_MS * 1_000_000)
                     requestOffline("Đang thử xác nhận lại Offline…")
-                if ((wantsOnline || state.value.orderKnowledge == DriverOrderKnowledge.ACTIVE) && onlineRisk
+                if (!DriverDeliveryLocationService.isTracking &&
+                    (wantsOnline || state.value.orderKnowledge == DriverOrderKnowledge.ACTIVE) && onlineRisk
                     && !offlineNeeded && !state.value.saving && !state.value.statusUnknown
                     && snapshot.status == DriverGpsStatus.READY && snapshot.fix!!.elapsedNanos > lastUploadedFix
                     && now - lastUploadAttempt >= DriverLocationPolicy.UPLOAD_INTERVAL_MS * 1_000_000
@@ -367,7 +368,8 @@ class DriverDashboardViewModel @Inject constructor(
         if (uploadJob?.isActive == true) return
         uploadJob = viewModelScope.launch {
             operations.withLock {
-                if (!canTrack(session, intent) || !onlineRisk || offlineNeeded || state.value.saving || state.value.statusUnknown
+                if (DriverDeliveryLocationService.isTracking ||
+                    !canTrack(session, intent) || !onlineRisk || offlineNeeded || state.value.saving || state.value.statusUnknown
                     || state.value.profile?.status != "APPROVED" || state.value.profile?.isOnline != true
                 ) return@withLock
                 // GET may have held the mutex long enough to invalidate the queued fix.

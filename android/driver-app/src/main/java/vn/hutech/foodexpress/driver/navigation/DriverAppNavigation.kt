@@ -51,6 +51,8 @@ import vn.hutech.foodexpress.driver.ui.order.forDriver
 import vn.hutech.foodexpress.driver.ui.report.*
 import vn.hutech.foodexpress.driver.ui.dashboard.DriverDashboardNavigation
 import vn.hutech.foodexpress.driver.data.offer.OfferAction
+import vn.hutech.foodexpress.driver.data.location.DriverDeliveryLocationEffect
+import vn.hutech.foodexpress.driver.data.location.DriverDeliveryLocationService
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverOnboardingScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverPermissionIntroScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.DriverSplashScreen
@@ -115,6 +117,7 @@ fun DriverAppNavigation() {
         offerState.acceptedOrderId == null && offerState.offer == null && offerState.message != null && offerState.phase != DriverOfferPhase.REJECTED)
         { { DriverOfferStatusCard(offerState, offers::retryPending, offers::refresh) } } else null
     var foreground by androidx.compose.runtime.remember { mutableStateOf(false) }
+    DriverDeliveryLocationEffect(state, orderState, foreground)
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     var rejectOrigin by androidx.compose.runtime.remember(state.user?.id) { mutableStateOf<String?>(null) }
@@ -136,6 +139,7 @@ fun DriverAppNavigation() {
         }
     }
     val logout: () -> Unit = {
+        DriverDeliveryLocationService.stop(context)
         syncDeliveryKnowledge()
         dashboard.clear() // Capture the old owner's policy/JWT before clearing other state.
         reports.clear(); orders.clear(); offers.clear(); auth.logout()
