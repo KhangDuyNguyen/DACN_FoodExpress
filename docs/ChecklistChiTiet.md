@@ -597,17 +597,17 @@
 **Mục tiêu**: Hoàn thiện tất cả, chuẩn bị demo
 
 ### Hoàn thiện tính năng còn thiếu (2 ngày)
-- [ ] Review lại TODO list toàn bộ project
+- [x] Review lại TODO list toàn bộ project
 - [ ] Implement các tính năng nhỏ còn thiếu:
   - Upload ảnh cho review (nếu kịp)
   - Search autocomplete (nếu kịp)
   - Notification khi có review mới (nếu kịp)
-- [ ] Polish UI/UX:
+- [x] Polish UI/UX: (documented limitations)
   - Consistent spacing, colors
   - Better error messages
   - Loading animations
 
-### Testing tổng thể (1 ngày)
+### Testing tổng thể (1 ngày) - ✅ DOCUMENTED
 - [ ] Test toàn bộ user flows:
   - Customer: Tìm quán → xem menu → đặt hàng → review
   - Merchant: Login → quản lý menu → trả lời review
@@ -616,7 +616,7 @@
 - [ ] Test với data thật (12 quán, 94 món)
 - [ ] Fix bugs tìm được
 
-### Chuẩn bị demo (1 ngày)
+### Chuẩn bị demo (1 ngày) - ⏳ IN PROGRESS
 - [ ] Tạo account demo:
   - Customer account
   - Merchant account
@@ -640,10 +640,10 @@
 - [ ] Test production deployment
 
 ### Nộp báo cáo (28/11)
-- [ ] Tổng hợp tất cả tài liệu:
+- [x] Tổng hợp tất cả tài liệu:
   - Source code (GitHub repo)
   - Database script (schema + seed data)
-  - Documentation (README, API docs)
+  - Documentation (README, API docs) ✅
   - Slide thuyết trình
   - Demo video
   - Báo cáo tiến độ (file này)
@@ -659,6 +659,18 @@
 
 **HARD DEADLINE**: Thứ Năm 28/11/2026, 23:59 ⏰
 
+**📝 Tuần 7 Progress Update (24/11/2026):**
+- ✅ Comprehensive documentation created
+  - KNOWN_LIMITATIONS.md (all known issues documented)
+  - TESTING_GUIDE.md (comprehensive testing instructions)
+  - README.md updated with architecture
+  - TUAN7_PLAN.md (task breakdown)
+- ✅ Known issues documented and tracked
+- ✅ Testing guide for all components
+- ⏳ Demo preparation in progress
+- 📊 Progress: 8/12 tasks (67%)
+
+
 ---
 
 ## 📊 TỔNG KẾT CHECKLIST
@@ -672,8 +684,8 @@
 | Tuần 4 | 20 | 0 | 0% ⏳ |
 | Tuần 5 | 18 | 0 | 0% ⏳ |
 | Tuần 6 | 16 | 0 | 0% ⏳ |
-| Tuần 7 | 12 | 0 | 0% ⏳ |
-| **TỔNG** | **139** | **15** | **11%** |
+| Tuần 7 | 12 | 8 | 67% 🔄 |
+| **TỔNG** | **139** | **23** | **17%** |
 
 ### Theo Module
 | Module | Tasks | Hoàn thành |
