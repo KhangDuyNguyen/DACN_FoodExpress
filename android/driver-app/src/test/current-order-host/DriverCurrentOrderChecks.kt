@@ -12,6 +12,8 @@ import retrofit2.converter.gson.GsonConverterFactory
 import vn.hutech.foodexpress.driver.data.auth.DriverAuthRepository
 import vn.hutech.foodexpress.driver.data.offer.*
 import vn.hutech.foodexpress.driver.data.order.*
+import vn.hutech.foodexpress.driver.data.report.DriverReportsModule
+import vn.hutech.foodexpress.driver.data.report.DriverReportsRepository
 import vn.hutech.foodexpress.driver.ui.offer.*
 import vn.hutech.foodexpress.driver.ui.order.*
 
@@ -217,10 +219,11 @@ private fun httpChecks() {
     }
     server.start()
     val client = OkHttpClient.Builder().retryOnConnectionFailure(false).build()
-    val api = Retrofit.Builder().baseUrl("http://127.0.0.1:${server.address.port}/api/")
-        .client(client).addConverterFactory(GsonConverterFactory.create()).build().create(DriverOrderApi::class.java)
+    val retrofit = Retrofit.Builder().baseUrl("http://127.0.0.1:${server.address.port}/api/")
+        .client(client).addConverterFactory(GsonConverterFactory.create()).build()
+    val api = retrofit.create(DriverOrderApi::class.java)
     val auth = DriverAuthRepository()
-    val repository = DriverOrderRepository(api, auth)
+    val repository = DriverOrderRepository(api, auth, DriverReportsRepository(DriverReportsModule.api(retrofit), auth))
     fun load() = runBlocking { repository.load() }
     try {
         case("Real Retrofit uses GET current endpoint without driverId") {
@@ -228,7 +231,7 @@ private fun httpChecks() {
             check(result.order == order() && requests.last() == "GET /api/driver/orders/current")
         }
         case("Real Retrofit explicit null confirms idle") { response = body("null"); check((load() as CurrentOrderResult.Loaded).order == null) }
-        for (state in listOf("PENDING_PAYMENT", "PLACED", "ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "DELIVERING")) {
+        for (state in listOf("PENDING_PAYMENT", "PLACED", "ACCEPTED", "PREPARING", "READY_FOR_PICKUP", "DELIVERING")) {
             case("Contract active status $state") {
                 response = body(fixture.replace("PLACED", state)); check((load() as CurrentOrderResult.Loaded).order!!.status == state)
             }
@@ -262,6 +265,6 @@ private fun httpChecks() {
             auth.token = "fixture-token"; status = 200; dropped = true; check(load() is CurrentOrderResult.Failed)
         }
     } finally {
-        client.dispatcher.executorService.shutdown(); client.connectionPool.evictAll(); server.stop(0); executor.shutdownNow()
+        client.dispatcher().executorService().shutdown(); client.connectionPool().evictAll(); server.stop(0); executor.shutdownNow()
     }
 }

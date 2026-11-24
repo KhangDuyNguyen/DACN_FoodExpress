@@ -199,7 +199,10 @@ class DriverFlowIntegrationTest {
         mockMvc.perform(post("/api/driver/offers/{id}/accept", offerIdOf(orderId)).header("Authorization", driver))
                 .andExpect(status().isOk());
 
-        // Mon chua xong: tai xe chua lay mon duoc
+        // Accept does not prepare the order. The driver must wait in both kitchen states.
+        assertEquals("PLACED", jdbc.queryForObject("SELECT status FROM orders WHERE id = :id",
+                Map.of("id", orderId), String.class));
+        driverChanges(driver, orderId, "DELIVERING").andExpect(status().isConflict());
         merchantChanges(merchant, orderId, "PREPARING").andExpect(status().isOk());
         driverChanges(driver, orderId, "DELIVERING")
                 .andExpect(status().isConflict());
@@ -219,6 +222,7 @@ class DriverFlowIntegrationTest {
                 .andExpect(status().isForbidden());
 
         // Sai trang thai cho tai xe -> 400
+        driverChanges(driver, orderId, "PICKED_UP").andExpect(status().isBadRequest());
         driverChanges(driver, orderId, "PREPARING")
                 .andExpect(status().isBadRequest());
 

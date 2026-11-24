@@ -135,7 +135,7 @@ public class OrderManagementService {
      *   2. Tai xe da nhan don thi khong huy duoc nua -> 409.
      *   3. UPDATE ... WHERE status = trang thai vua doc; 0 dong nghia la co nguoi vua doi truoc -> 409.
      *   4. Ghi them 1 dong lich su (ai doi, luc nao, ly do).
-     *   5. Phat OrderStatusChangedEvent; ben nghe chi chay sau khi transaction commit.
+     *   5. Phat OrderStatusChangedEvent trong cung transaction de ghi thu nhap dong bo.
      */
     private void changeStatus(LockedOrder order, Actor actor, String toStatus, long changedBy, String reason) {
         boolean hasDriver = order.driverId() != null;

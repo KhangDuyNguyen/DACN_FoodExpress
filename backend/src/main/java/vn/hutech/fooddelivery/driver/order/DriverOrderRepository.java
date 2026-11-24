@@ -2,6 +2,7 @@ package vn.hutech.fooddelivery.driver.order;
 
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
+import vn.hutech.fooddelivery.driver.DriverReadTime;
 
 import java.util.List;
 import java.util.Map;
@@ -16,9 +17,31 @@ public class DriverOrderRepository {
         this.jdbc = jdbc;
     }
 
-    Optional<Long> findDriverId(long userId) {
+    // An - Tuan 5C [MODIFY]: Dung chung anh xa danh tinh cho hai API doc, giu nguyen SQL cua GET current.
+    public Optional<Long> findDriverId(long userId) {
         return jdbc.query("SELECT id FROM drivers WHERE user_id = :userId", Map.of("userId", userId),
                 (rs, index) -> rs.getLong("id")).stream().findFirst();
+    }
+
+    public long countDeliveredHistory(long driverId) {
+        Long count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM orders WHERE driver_id = :driverId AND status = 'DELIVERED'
+                """, Map.of("driverId", driverId), Long.class);
+        return count == null ? 0 : count;
+    }
+
+    public List<DriverOrderHistoryItem> findDeliveredHistory(long driverId, int limit, long offset) {
+        return jdbc.query("""
+                SELECT o.id, o.code, r.id AS restaurant_id, r.name AS restaurant_name, o.status,
+                       UNIX_TIMESTAMP(o.delivered_at) AS delivered_at_epoch
+                FROM orders o JOIN restaurants r ON r.id = o.restaurant_id
+                WHERE o.driver_id = :driverId AND o.status = 'DELIVERED'
+                ORDER BY o.delivered_at DESC, o.id DESC
+                LIMIT :limit OFFSET :offset
+                """, Map.of("driverId", driverId, "limit", limit, "offset", offset), (rs, i) ->
+                new DriverOrderHistoryItem(rs.getLong("id"), rs.getString("code"), rs.getLong("restaurant_id"),
+                        rs.getString("restaurant_name"), rs.getString("status"),
+                        DriverReadTime.vietnamTime(rs, "delivered_at_epoch")));
     }
 
     List<DriverCurrentOrderResponse.CurrentOrder> findCurrentOrders(long driverId) {
