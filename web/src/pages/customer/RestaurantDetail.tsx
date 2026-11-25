@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { useParams, Link, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { trackInteraction } from '../../api/ai'
 import { fetchRestaurantById, fetchRestaurantMenu } from '../../api/restaurants'
 import type { MenuItemDTO, OptionGroupDTO } from '../../api/restaurants'
 import { addCartItem, cartQueryKey, fetchCart } from '../../api/cart'
@@ -13,10 +14,17 @@ const DAY_NAMES: Record<number, string> = {
   5: 'Thứ 6', 6: 'Thứ 7', 7: 'Chủ nhật',
 }
 
+function buildDetailViewEventId(userId: number, menuItemId: number): string {
+  return `detail-view-${userId}-${menuItemId}-${Math.floor(Date.now() / 10000)}`
+}
+
 export default function RestaurantDetail() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const highlightItemId = Number(searchParams.get('highlightItem')) || null
   const restaurantId = Number(id)
   const [activeCategory, setActiveCategory] = useState<number | null>(null)
+  const viewedItemsRef = useRef<Set<number>>(new Set())
 
   const { data: restaurant, isLoading: loadingInfo, isError: errorInfo } = useQuery({
     queryKey: ['restaurant', restaurantId],
@@ -38,13 +46,46 @@ export default function RestaurantDetail() {
   const [cartError, setCartError] = useState<string | null>(null)
   const isCustomer = user?.role === 'CUSTOMER'
 
+  function recordItemView(menuItemId: number) {
+    if (!user || viewedItemsRef.current.has(menuItemId)) return
+    viewedItemsRef.current.add(menuItemId)
+    void trackInteraction({
+      menuItemId,
+      type: 'VIEW',
+      eventId: buildDetailViewEventId(user.id, menuItemId),
+    })
+  }
+
+  useEffect(() => {
+    if (!menu || !highlightItemId || !user) return
+    const exists = menu.categories.some((cat) =>
+      cat.items.some((it) => it.id === highlightItemId),
+    )
+    if (exists && !viewedItemsRef.current.has(highlightItemId)) {
+      viewedItemsRef.current.add(highlightItemId)
+      void trackInteraction({
+        menuItemId: highlightItemId,
+        type: 'VIEW',
+        eventId: buildDetailViewEventId(user.id, highlightItemId),
+      })
+    }
+  }, [menu, highlightItemId, user])
+
   const { data: cart } = useQuery({ queryKey: cartQueryKey, queryFn: fetchCart, enabled: isCustomer })
 
   const addMutation = useMutation({
     mutationFn: addCartItem,
-    onSuccess: (newCart) => {
+    onSuccess: (newCart, variables) => {
       queryClient.setQueryData(cartQueryKey, newCart)
       setCartError(null)
+      if (isCustomer) {
+        void trackInteraction({
+          menuItemId: variables.menuItemId,
+          type: 'ADD_TO_CART',
+          quantity: variables.quantity,
+        })
+        void queryClient.invalidateQueries({ queryKey: ['ai-recommendations'] })
+      }
     },
     onError: (error) => setCartError(getApiError(error).message),
   })
@@ -80,10 +121,13 @@ export default function RestaurantDetail() {
 
   const isOpen = restaurant.openStatus === 'OPEN'
   // Chuyển sang chi nhánh khác thì trang không bị tạo lại, activeCategory còn giữ id nhóm món của quán cũ.
-  // Id đó không có trong menu quán mới thì quay về nhóm món đầu tiên.
+  // Id đó không có trong menu quán mới thì ưu tiên nhóm chứa món được highlight hoặc nhóm đầu tiên.
+  const highlightedCatId = highlightItemId
+    ? menu?.categories.find(cat => cat.items.some(it => it.id === highlightItemId))?.id
+    : undefined
   const currentCatId = menu?.categories.some(cat => cat.id === activeCategory)
     ? activeCategory
-    : menu?.categories[0]?.id ?? null
+    : (highlightedCatId ?? menu?.categories[0]?.id ?? null)
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
@@ -223,6 +267,8 @@ export default function RestaurantDetail() {
                       key={item.id}
                       item={item}
                       adding={addMutation.isPending}
+                      highlighted={item.id === highlightItemId}
+                      onView={() => recordItemView(item.id)}
                       onAdd={() => handleAdd(item)}
                     />
                   ))}
@@ -250,43 +296,82 @@ export default function RestaurantDetail() {
 
 // ── MenuItemCard ──────────────────────────────────────────────────────────
 
-function MenuItemCard({ item, adding, onAdd }: { item: MenuItemDTO; adding: boolean; onAdd: () => void }) {
-  const [expanded, setExpanded] = useState(false)
+function MenuItemCard({
+  item,
+  adding,
+  highlighted,
+  onView,
+  onAdd,
+}: {
+  item: MenuItemDTO
+  adding: boolean
+  highlighted: boolean
+  onView: () => void
+  onAdd: () => void
+}) {
+  const [expanded, setExpanded] = useState(highlighted)
   const hasOptions = item.optionGroups.length > 0
 
+  function toggleDetail() {
+    const next = !expanded
+    setExpanded(next)
+    if (next) {
+      onView()
+    }
+  }
+
   return (
-    <div className={`flex gap-3 rounded-xl border p-3 ${item.isAvailable ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
+    <div
+      className={`flex gap-3 rounded-xl border p-3 ${
+        !item.isAvailable
+          ? 'border-gray-100 bg-gray-50 opacity-60'
+          : highlighted
+            ? 'border-orange-400 bg-orange-50/40 ring-2 ring-orange-100'
+            : 'border-gray-200 bg-white'
+      }`}
+    >
       {/* Ảnh món */}
-      <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
+      <button
+        type="button"
+        onClick={toggleDetail}
+        className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100 text-left"
+      >
         {item.imageUrl ? (
           <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center text-3xl">🍴</div>
         )}
-      </div>
+      </button>
 
       {/* Thông tin */}
       <div className="flex flex-1 flex-col justify-between">
         <div>
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-medium text-gray-900">{item.name}</h3>
+            <button
+              type="button"
+              onClick={toggleDetail}
+              className="text-left font-medium text-gray-900 hover:text-orange-600"
+            >
+              {item.name}
+            </button>
             {!item.isAvailable && (
               <span className="flex-shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-500">Hết món</span>
             )}
           </div>
           {item.description && (
-            <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{item.description}</p>
+            <p className={`mt-0.5 text-xs text-gray-500 ${expanded ? '' : 'line-clamp-2'}`}>{item.description}</p>
           )}
-          {/* Tùy chọn */}
-          {hasOptions && (
+          {/* Chi tiết / Tùy chọn */}
+          {(hasOptions || item.description) && (
             <button
-              onClick={() => setExpanded(!expanded)}
+              type="button"
+              onClick={toggleDetail}
               className="mt-1 text-xs text-orange-500 hover:underline"
             >
-              {expanded ? '▲ Ẩn tùy chọn' : '▼ Xem tùy chọn'}
+              {expanded ? '▲ Thu gọn' : hasOptions ? '▼ Xem tùy chọn' : '▼ Xem chi tiết'}
             </button>
           )}
-          {expanded && (
+          {expanded && hasOptions && (
             <div className="mt-2 space-y-2">
               {item.optionGroups.map(og => (
                 <OptionGroupView key={og.id} group={og} />

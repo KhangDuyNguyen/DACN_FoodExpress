@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { fetchRestaurants, fetchCuisines } from '../../api/restaurants'
+import RecommendedDishesSection from '../../components/restaurant/RecommendedDishesSection'
 import RestaurantCard from '../../components/restaurant/RestaurantCard'
 
 // Số quán mỗi trang (backend cho tối đa 50)
@@ -148,6 +149,9 @@ export default function RestaurantList() {
           </button>
         ))}
       </div>
+
+      {/* Khu vực AI gợi ý món ăn */}
+      <RecommendedDishesSection limit={8} />
 
       {/* Kết quả */}
       <div className="mt-6">
