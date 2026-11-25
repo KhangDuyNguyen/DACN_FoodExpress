@@ -63,7 +63,13 @@ public class SecurityConfig {
                                 // Trang loi noi bo cua Spring, neu chan thi loi cua API cong khai bi doi thanh 401
                                 "/error"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/restaurants/**", "/api/cuisines", "/api/vouchers").permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/restaurants/**",
+                                "/api/cuisines",
+                                "/api/vouchers",
+                                "/api/ai/recommendations",
+                                "/api/ai/health"
+                        ).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/vouchers/validate").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/merchant/**").hasRole("MERCHANT")
