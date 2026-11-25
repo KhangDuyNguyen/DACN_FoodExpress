@@ -23,7 +23,7 @@ import java.util.Map;
 @Repository
 public class RecommendationRepository {
 
-    private static final String ACTIVE_ITEM_FILTER = """
+    private static final String ACTIVE_ITEM_FILTER = "\n" + """
             mi.is_available = 1
             AND mc.is_active = 1
             AND r.status IN ('APPROVED', 'ACTIVE')
@@ -31,7 +31,7 @@ public class RecommendationRepository {
             """;
 
     private static final String VALID_ORDER_STATUS_FILTER =
-            "o.status NOT IN ('CANCELLED', 'REJECTED', 'PENDING_PAYMENT')";
+            "\no.status NOT IN ('CANCELLED', 'REJECTED', 'PENDING_PAYMENT')\n";
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -54,7 +54,7 @@ public class RecommendationRepository {
                 JOIN restaurants r ON r.id = mc.restaurant_id
                 LEFT JOIN restaurant_cuisines rc ON rc.restaurant_id = r.id
                 LEFT JOIN cuisines c ON c.id = rc.cuisine_id
-                WHERE """ + ACTIVE_ITEM_FILTER + """
+                WHERE """ + ACTIVE_ITEM_FILTER + "\n" + """
                 ORDER BY r.avg_rating DESC, mi.sort_order ASC, mi.id ASC
                 """;
 
@@ -96,7 +96,7 @@ public class RecommendationRepository {
                 JOIN menu_items mi ON mi.id = oi.menu_item_id
                 JOIN menu_categories mc ON mc.id = mi.category_id
                 JOIN restaurants r ON r.id = mc.restaurant_id
-                WHERE """ + VALID_ORDER_STATUS_FILTER + " AND " + ACTIVE_ITEM_FILTER + """
+                WHERE """ + VALID_ORDER_STATUS_FILTER + "\n AND " + ACTIVE_ITEM_FILTER + "\n" + """
                   AND (:restaurantId IS NULL OR r.id = :restaurantId)
                 GROUP BY mi.id
                 ORDER BY quantity_sold DESC, order_count DESC, mi.id ASC
@@ -123,7 +123,7 @@ public class RecommendationRepository {
                 JOIN menu_categories mc ON mc.id = mi.category_id
                 JOIN restaurants r ON r.id = mc.restaurant_id
                 WHERE uii.user_id = :userId
-                  AND """ + ACTIVE_ITEM_FILTER + """
+                  AND """ + ACTIVE_ITEM_FILTER + "\n" + """
                 GROUP BY uii.menu_item_id, uii.type
                 """;
 
@@ -147,7 +147,7 @@ public class RecommendationRepository {
                 JOIN restaurants r ON r.id = mc.restaurant_id
                 WHERE o.customer_id = :userId
                   AND oi.menu_item_id IS NOT NULL
-                  AND """ + VALID_ORDER_STATUS_FILTER + " AND " + ACTIVE_ITEM_FILTER + """
+                  AND """ + VALID_ORDER_STATUS_FILTER + "\n AND " + ACTIVE_ITEM_FILTER + "\n" + """
                   AND NOT EXISTS (
                       SELECT 1 FROM user_item_interactions uii
                       WHERE uii.order_id = o.id AND uii.menu_item_id = oi.menu_item_id AND uii.type = 'ORDER'
@@ -187,7 +187,7 @@ public class RecommendationRepository {
                 JOIN menu_items mi ON mi.id = uii.menu_item_id
                 JOIN menu_categories mc ON mc.id = mi.category_id
                 JOIN restaurants r ON r.id = mc.restaurant_id
-                WHERE """ + ACTIVE_ITEM_FILTER + """
+                WHERE """ + ACTIVE_ITEM_FILTER + "\n" + """
                 GROUP BY uii.user_id, uii.menu_item_id, uii.type
                 LIMIT 15000
                 """;
@@ -211,7 +211,7 @@ public class RecommendationRepository {
                 FROM (
                     SELECT id, customer_id, code
                     FROM orders o
-                    WHERE """ + VALID_ORDER_STATUS_FILTER + """
+                    WHERE """ + VALID_ORDER_STATUS_FILTER + "\n" + """
                     ORDER BY created_at DESC, id DESC
                     LIMIT :maxOrders
                 ) o
@@ -220,7 +220,7 @@ public class RecommendationRepository {
                 JOIN menu_categories mc ON mc.id = mi.category_id
                 JOIN restaurants r ON r.id = mc.restaurant_id
                 WHERE oi.menu_item_id IS NOT NULL
-                  AND """ + ACTIVE_ITEM_FILTER + """
+                  AND """ + ACTIVE_ITEM_FILTER + "\n" + """
                 ORDER BY o.id
                 """;
         List<Map<String, Object>> rows = jdbc.queryForList(sql, Map.of("maxOrders", maxOrders));
