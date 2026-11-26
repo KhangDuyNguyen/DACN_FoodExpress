@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.hutech.fooddelivery.cart.CartLine;
 import vn.hutech.fooddelivery.cart.CartRepository;
 import vn.hutech.fooddelivery.cart.CartRow;
+import vn.hutech.fooddelivery.cart.OptionRules;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.NotFoundException;
 import vn.hutech.fooddelivery.order.dto.CreateOrderRequest;
@@ -27,6 +28,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 /** Nghiep vu dat hang: xem truoc tien va tao don tu gio hang. */
@@ -112,8 +114,16 @@ public class OrderService {
             throw new ConflictException("Quán đang đóng cửa, chưa đặt được");
         }
         for (CartLine line : lines) {
-            if (!line.available()) {
+            if (!line.itemAvailable()) {
                 throw new ConflictException("Món \"" + line.name() + "\" đã hết, vui lòng xóa khỏi giỏ hàng");
+            }
+            // Quan co the doi tuy chon sau khi khach them vao gio (het, xoa han, doi nhom bat buoc):
+            // kiem tra lai bang dung luat luc them vao gio
+            Optional<String> optionProblem = OptionRules.findProblem(
+                    cartRepository.findItemOptions(line.menuItemId()), line.optionIds());
+            if (optionProblem.isPresent()) {
+                throw new ConflictException("Món \"" + line.name() + "\": " + optionProblem.get()
+                        + ". Hãy xóa món khỏi giỏ hàng và thêm lại");
             }
         }
 

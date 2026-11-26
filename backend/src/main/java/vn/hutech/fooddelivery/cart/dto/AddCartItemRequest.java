@@ -5,8 +5,10 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.util.List;
+
 /**
- * Them mon vao gio. Client chi gui id mon va so luong, KHONG gui gia (gia doc tu database).
+ * Them mon vao gio. Client chi gui id mon, so luong va id tuy chon, KHONG gui gia (gia doc tu database).
  * replaceCart = true: dong y xoa gio cua quan khac de them mon cua quan nay.
  */
 public record AddCartItemRequest(
@@ -22,6 +24,15 @@ public record AddCartItemRequest(
         String note,
 
         // Khong gui thi mac dinh false
-        boolean replaceCart
+        boolean replaceCart,
+
+        // id cac tuy chon (size, topping...) khach chon. Mon khong co tuy chon thi bo trong.
+        @Size(max = 20, message = "Chọn tối đa 20 tùy chọn")
+        List<@NotNull(message = "Tùy chọn không hợp lệ") Long> optionIds
 ) {
+
+    /** Khong gui optionIds thi coi nhu khong chon tuy chon nao. */
+    public AddCartItemRequest {
+        optionIds = optionIds == null ? List.of() : optionIds;
+    }
 }

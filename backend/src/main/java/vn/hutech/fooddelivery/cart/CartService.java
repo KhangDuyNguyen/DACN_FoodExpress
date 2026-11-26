@@ -2,18 +2,21 @@ package vn.hutech.fooddelivery.cart;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import vn.hutech.fooddelivery.cart.CartRepository.CartItemRow;
 import vn.hutech.fooddelivery.cart.CartRepository.CartRestaurant;
 import vn.hutech.fooddelivery.cart.dto.AddCartItemRequest;
 import vn.hutech.fooddelivery.cart.dto.CartItemResponse;
 import vn.hutech.fooddelivery.cart.dto.CartResponse;
 import vn.hutech.fooddelivery.cart.dto.UpdateCartItemRequest;
+import vn.hutech.fooddelivery.common.BadRequestException;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.NotFoundException;
 import vn.hutech.fooddelivery.order.OrderPricing;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Nghiep vu gio hang. Moi khach co toi da 1 gio, va 1 gio chi chua mon cua 1 quan.
@@ -47,6 +50,12 @@ public class CartService {
         if (!item.available() || !item.categoryActive()) {
             throw new ConflictException("Món \"" + item.name() + "\" đã hết");
         }
+        // Tuy chon (size, topping...): dung cua mon nay, con ban, du so luong moi nhom (luat o OptionRules)
+        Optional<String> optionProblem = OptionRules.findProblem(
+                cartRepository.findItemOptions(item.id()), req.optionIds());
+        if (optionProblem.isPresent()) {
+            throw new BadRequestException(optionProblem.get());
+        }
         String note = cleanNote(req.note());
 
         // Khoa gio cua khach den het transaction; chua co gio thi tao moi gan voi quan cua mon nay
@@ -66,18 +75,32 @@ public class CartService {
             }
         }
 
-        // Cung mon, cung ghi chu thi cong don so luong; khac thi them dong moi
-        Optional<CartItemRow> same = cartRepository.findSameItem(cartId, item.id(), note);
+        // Cung mon, cung ghi chu VA cung bo tuy chon thi cong don so luong; khac thi them dong moi
+        Optional<CartLine> same = findSameLine(cartId, item.id(), note, req.optionIds());
         if (same.isPresent()) {
             int newQuantity = same.get().quantity() + req.quantity();
             if (newQuantity > MAX_QUANTITY) {
                 throw new ConflictException("Mỗi món tối đa " + MAX_QUANTITY + " phần");
             }
-            cartRepository.updateQuantity(same.get().id(), newQuantity);
+            cartRepository.updateQuantity(same.get().cartItemId(), newQuantity);
         } else {
-            cartRepository.insertItem(cartId, item.id(), req.quantity(), note);
+            long cartItemId = cartRepository.insertItem(cartId, item.id(), req.quantity(), note);
+            cartRepository.insertItemOptions(cartItemId, req.optionIds());
         }
         return getCart(userId);
+    }
+
+    /**
+     * Tim dong da co trong gio cung mon, cung ghi chu, cung bo tuy chon. So sanh bo tuy chon bang Set
+     * nen khong phu thuoc thu tu client gui (vd [Lon, Thach] va [Thach, Lon] la mot).
+     */
+    private Optional<CartLine> findSameLine(long cartId, long menuItemId, String note, List<Long> optionIds) {
+        Set<Long> chosen = new HashSet<>(optionIds);
+        return cartRepository.findLines(cartId).stream()
+                .filter(line -> line.menuItemId() == menuItemId
+                        && Objects.equals(line.note(), note)
+                        && new HashSet<>(line.optionIds()).equals(chosen))
+                .findFirst();
     }
 
     @Transactional

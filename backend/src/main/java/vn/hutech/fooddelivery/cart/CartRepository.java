@@ -8,11 +8,13 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** SQL thuan cho bang carts va cart_items. */
+/** SQL thuan cho bang carts, cart_items, cart_item_options (va doc menu, tuy chon, quan). */
 @Repository
 public class CartRepository {
 
@@ -69,10 +71,12 @@ public class CartRepository {
     // ----- Bang cart_items -----
 
     /**
-     * Cac dong trong gio, ghep voi menu_items de lay ten, gia, trang thai hien tai cua mon.
+     * Cac dong trong gio, ghep voi menu_items de lay ten, gia, trang thai hien tai cua mon,
+     * kem cac tuy chon da chon cua tung dong.
      * available = mon con ban VA nhom mon dang bat.
      */
     public List<CartLine> findLines(long cartId) {
+        Map<Long, List<CartLineOption>> optionsByLine = findLineOptions(cartId);
         String sql = """
                 SELECT ci.id, ci.menu_item_id, mi.name, mi.image_url, mi.price, ci.quantity, ci.note,
                        (mi.is_available = 1 AND mc.is_active = 1) AS available
@@ -90,8 +94,32 @@ public class CartRepository {
                 rs.getBigDecimal("price"),
                 rs.getInt("quantity"),
                 rs.getString("note"),
-                rs.getBoolean("available")
+                rs.getBoolean("available"),
+                optionsByLine.getOrDefault(rs.getLong("id"), List.of())
         ));
+    }
+
+    /**
+     * Tuy chon da chon cua moi dong trong gio, gom theo cart_items.id. Ten, gia, trang thai doc tu bang options
+     * (gia tri HIEN TAI), xep theo thu tu nhom roi thu tu tuy chon giong menu.
+     */
+    private Map<Long, List<CartLineOption>> findLineOptions(long cartId) {
+        String sql = """
+                SELECT cio.cart_item_id, o.id, o.name, o.extra_price, o.is_available
+                FROM cart_item_options cio
+                JOIN cart_items ci ON ci.id = cio.cart_item_id
+                JOIN options o ON o.id = cio.option_id
+                JOIN option_groups g ON g.id = o.group_id
+                WHERE ci.cart_id = :cartId
+                ORDER BY g.sort_order, g.id, o.sort_order, o.id
+                """;
+        Map<Long, List<CartLineOption>> result = new HashMap<>();
+        jdbc.query(sql, Map.of("cartId", cartId), rs -> {
+            CartLineOption option = new CartLineOption(rs.getLong("id"), rs.getString("name"),
+                    rs.getBigDecimal("extra_price"), rs.getBoolean("is_available"));
+            result.computeIfAbsent(rs.getLong("cart_item_id"), k -> new ArrayList<>()).add(option);
+        });
+        return result;
     }
 
     public int countItems(long cartId) {
@@ -100,24 +128,8 @@ public class CartRepository {
         return count == null ? 0 : count;
     }
 
-    /**
-     * Tim dong da co cung mon va cung ghi chu, de cong don so luong thay vi them dong moi.
-     * "<=>" la phep so sanh bang cua MySQL coi NULL <=> NULL la dung (dau "=" thi NULL = NULL la sai).
-     */
-    public Optional<CartItemRow> findSameItem(long cartId, long menuItemId, String note) {
-        String sql = """
-                SELECT id, quantity FROM cart_items
-                WHERE cart_id = :cartId AND menu_item_id = :menuItemId AND note <=> :note
-                """;
-        MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("cartId", cartId)
-                .addValue("menuItemId", menuItemId)
-                .addValue("note", note);
-        return jdbc.query(sql, params, (rs, i) -> new CartItemRow(rs.getLong("id"), rs.getInt("quantity")))
-                .stream().findFirst();
-    }
-
-    public void insertItem(long cartId, long menuItemId, int quantity, String note) {
+    /** Them 1 dong vao gio, tra ve id vua tao (de ghi tiep cac tuy chon cua dong do). */
+    public long insertItem(long cartId, long menuItemId, int quantity, String note) {
         String sql = """
                 INSERT INTO cart_items (cart_id, menu_item_id, quantity, note)
                 VALUES (:cartId, :menuItemId, :quantity, :note)
@@ -127,7 +139,17 @@ public class CartRepository {
                 .addValue("menuItemId", menuItemId)
                 .addValue("quantity", quantity)
                 .addValue("note", note);
-        jdbc.update(sql, params);
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(sql, params, keyHolder, new String[]{"id"});
+        return keyHolder.getKey().longValue();
+    }
+
+    /** Ghi cac tuy chon khach chon cho 1 dong trong gio. Xoa dong (hoac ca gio) thi cac dong nay tu xoa theo. */
+    public void insertItemOptions(long cartItemId, List<Long> optionIds) {
+        String sql = "INSERT INTO cart_item_options (cart_item_id, option_id) VALUES (:cartItemId, :optionId)";
+        for (Long optionId : optionIds) {
+            jdbc.update(sql, Map.of("cartItemId", cartItemId, "optionId", optionId));
+        }
     }
 
     public void updateQuantity(long cartItemId, int quantity) {
@@ -190,6 +212,31 @@ public class CartRepository {
         )).stream().findFirst();
     }
 
+    /**
+     * Moi tuy chon cua 1 mon kem luat cua nhom chua no, de kiem tra lua chon cua khach (OptionRules).
+     * Nhom chua co tuy chon nao thi khong co dong nao o day, nen khong bat khach chon nhom do.
+     */
+    public List<MenuOptionInfo> findItemOptions(long menuItemId) {
+        String sql = """
+                SELECT o.id, o.name, o.is_available, g.id AS group_id, g.name AS group_name,
+                       g.is_required, g.min_select, g.max_select
+                FROM option_groups g
+                JOIN options o ON o.group_id = g.id
+                WHERE g.menu_item_id = :menuItemId
+                ORDER BY g.sort_order, g.id, o.sort_order, o.id
+                """;
+        return jdbc.query(sql, Map.of("menuItemId", menuItemId), (rs, i) -> new MenuOptionInfo(
+                rs.getLong("id"),
+                rs.getString("name"),
+                rs.getBoolean("is_available"),
+                rs.getLong("group_id"),
+                rs.getString("group_name"),
+                rs.getBoolean("is_required"),
+                rs.getInt("min_select"),
+                rs.getInt("max_select")
+        ));
+    }
+
     /** Ten va don toi thieu cua quan, de hien tren gio. */
     public Optional<CartRestaurant> findRestaurant(long restaurantId) {
         String sql = "SELECT id, name, min_order_amount FROM restaurants WHERE id = :id";
@@ -198,10 +245,6 @@ public class CartRepository {
                 rs.getString("name"),
                 rs.getBigDecimal("min_order_amount")
         )).stream().findFirst();
-    }
-
-    /** id va so luong cua 1 dong cart_items. */
-    public record CartItemRow(long id, int quantity) {
     }
 
     /** Quan cua gio: ten va gia tri don toi thieu. */

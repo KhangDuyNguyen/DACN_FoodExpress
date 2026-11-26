@@ -7,9 +7,11 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 import vn.hutech.fooddelivery.cart.CartLine;
+import vn.hutech.fooddelivery.cart.CartLineOption;
 import vn.hutech.fooddelivery.order.dto.AdminOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderHistoryResponse;
+import vn.hutech.fooddelivery.order.dto.OrderItemOptionResponse;
 import vn.hutech.fooddelivery.order.dto.OrderItemResponse;
 import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
 
@@ -17,12 +19,13 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** SQL thuan cho bang orders, order_items, order_status_history (va doc phi ship, quan). */
+/** SQL thuan cho bang orders, order_items, order_item_options, order_status_history (va doc phi ship, quan). */
 @Repository
 public class OrderRepository {
 
@@ -103,7 +106,10 @@ public class OrderRepository {
         return keyHolder.getKey().longValue();
     }
 
-    /** Luu ten va don gia cua mon TAI THOI DIEM DAT, de sau nay quan doi menu thi don cu khong doi. */
+    /**
+     * Luu mon va cac tuy chon cua mon TAI THOI DIEM DAT (ten, gia), de sau nay quan doi menu thi don cu khong doi.
+     * unit_price = gia mon + gia cac tuy chon, nen thanh tien van la unit_price x quantity.
+     */
     public void insertOrderItem(long orderId, CartLine line) {
         String sql = """
                 INSERT INTO order_items (order_id, menu_item_id, item_name, unit_price, quantity, note)
@@ -116,7 +122,21 @@ public class OrderRepository {
                 .addValue("unitPrice", line.unitPrice())
                 .addValue("quantity", line.quantity())
                 .addValue("note", line.note());
-        jdbc.update(sql, params);
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbc.update(sql, params, keyHolder, new String[]{"id"});
+        long orderItemId = keyHolder.getKey().longValue();
+
+        String optionSql = """
+                INSERT INTO order_item_options (order_item_id, option_id, option_name, extra_price)
+                VALUES (:orderItemId, :optionId, :optionName, :extraPrice)
+                """;
+        for (CartLineOption option : line.options()) {
+            jdbc.update(optionSql, new MapSqlParameterSource()
+                    .addValue("orderItemId", orderItemId)
+                    .addValue("optionId", option.id())
+                    .addValue("optionName", option.name())
+                    .addValue("extraPrice", option.extraPrice()));
+        }
     }
 
     public void insertStatusHistory(long orderId, String status, long changedBy, String note) {
@@ -216,25 +236,9 @@ public class OrderRepository {
                 Map.of("userId", userId), Long.class).stream().findFirst();
     }
 
+    /** Cac mon (kem tuy chon) cua 1 don. Dung chung cach doc voi findItemsByOrderIds. */
     public List<OrderItemResponse> findItems(long orderId) {
-        String sql = """
-                SELECT menu_item_id, item_name, unit_price, quantity, note
-                FROM order_items
-                WHERE order_id = :orderId
-                ORDER BY id
-                """;
-        return jdbc.query(sql, Map.of("orderId", orderId), (rs, i) -> {
-            BigDecimal unitPrice = rs.getBigDecimal("unit_price");
-            int quantity = rs.getInt("quantity");
-            return new OrderItemResponse(
-                    rs.getObject("menu_item_id", Long.class),
-                    rs.getString("item_name"),
-                    unitPrice,
-                    quantity,
-                    rs.getString("note"),
-                    unitPrice.multiply(BigDecimal.valueOf(quantity))
-            );
-        });
+        return findItemsByOrderIds(List.of(orderId)).getOrDefault(orderId, List.of());
     }
 
     public List<OrderHistoryResponse> findHistory(long orderId) {
@@ -475,8 +479,9 @@ public class OrderRepository {
         if (orderIds == null || orderIds.isEmpty()) {
             return Map.of();
         }
+        Map<Long, List<OrderItemOptionResponse>> optionsByItemId = findOptionsByOrderIds(orderIds);
         String sql = """
-                SELECT order_id, menu_item_id, item_name, unit_price, quantity, note
+                SELECT id, order_id, menu_item_id, item_name, unit_price, quantity, note
                 FROM order_items
                 WHERE order_id IN (:orderIds)
                 ORDER BY id
@@ -492,9 +497,28 @@ public class OrderRepository {
                     unitPrice,
                     quantity,
                     rs.getString("note"),
-                    unitPrice.multiply(BigDecimal.valueOf(quantity))
+                    unitPrice.multiply(BigDecimal.valueOf(quantity)),
+                    optionsByItemId.getOrDefault(rs.getLong("id"), List.of())
             );
             result.computeIfAbsent(orderId, k -> new ArrayList<>()).add(item);
+        });
+        return result;
+    }
+
+    /** Tuy chon cua cac mon trong nhung don nay (ten, gia LUC DAT), gom theo order_items.id. */
+    private Map<Long, List<OrderItemOptionResponse>> findOptionsByOrderIds(List<Long> orderIds) {
+        String sql = """
+                SELECT oio.order_item_id, oio.option_name, oio.extra_price
+                FROM order_item_options oio
+                JOIN order_items oi ON oi.id = oio.order_item_id
+                WHERE oi.order_id IN (:orderIds)
+                ORDER BY oio.id
+                """;
+        Map<Long, List<OrderItemOptionResponse>> result = new HashMap<>();
+        jdbc.query(sql, Map.of("orderIds", orderIds), rs -> {
+            OrderItemOptionResponse option = new OrderItemOptionResponse(rs.getString("option_name"),
+                    rs.getBigDecimal("extra_price"));
+            result.computeIfAbsent(rs.getLong("order_item_id"), k -> new ArrayList<>()).add(option);
         });
         return result;
     }

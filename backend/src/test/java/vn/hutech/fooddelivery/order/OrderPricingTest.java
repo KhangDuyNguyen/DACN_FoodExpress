@@ -17,7 +17,7 @@ class OrderPricingTest {
             new DeliveryFeeRule(new BigDecimal("15000"), new BigDecimal("2.00"), new BigDecimal("5000"));
 
     private static CartLine line(long price, int quantity) {
-        return new CartLine(1, 1, "Mon test", null, BigDecimal.valueOf(price), quantity, null, true);
+        return new CartLine(1, 1, "Mon test", null, BigDecimal.valueOf(price), quantity, null, true, List.of());
     }
 
     /** So sanh tien theo gia tri (compareTo), khong phu thuoc so chu so le cua BigDecimal. */

@@ -37,7 +37,8 @@ public class CartController {
     }
 
     @PostMapping("/items")
-    @Operation(summary = "Thêm món vào giỏ; giỏ đang có món quán khác thì 409, gửi replaceCart=true để thay giỏ")
+    @Operation(summary = "Thêm món (kèm tùy chọn optionIds) vào giỏ; chọn sai tùy chọn thì 400; "
+            + "giỏ đang có món quán khác thì 409, gửi replaceCart=true để thay giỏ")
     public ResponseEntity<CartResponse> addItem(@AuthenticationPrincipal AuthUser user,
                                                 @Valid @RequestBody AddCartItemRequest req) {
         return ResponseEntity.ok(cartService.addItem(user.id(), req));
