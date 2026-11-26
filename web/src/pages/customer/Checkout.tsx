@@ -4,7 +4,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { addressesQueryKey, fetchMyAddresses } from '../../api/addresses'
 import { getApiError } from '../../api/apiError'
 import { cartQueryKey, fetchCart } from '../../api/cart'
-import { createOrder, previewOrder } from '../../api/orders'
+import { createOrder, optionText, previewOrder } from '../../api/orders'
 import { fetchAvailableVouchers, type Voucher } from '../../api/voucher'
 
 // Trang so dia chi, luu xong quay lai day
@@ -262,6 +262,9 @@ export default function Checkout() {
               <li key={item.id} className="flex justify-between gap-2">
                 <span>
                   {item.quantity} × {item.name}
+                  {item.options.length > 0 && (
+                    <span className="block text-xs text-gray-500">{optionText(item.options)}</span>
+                  )}
                 </span>
                 <span>{vnd(item.lineTotal)}</span>
               </li>

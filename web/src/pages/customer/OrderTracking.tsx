@@ -5,6 +5,7 @@ import {
   cancelMyOrder,
   fetchMyOrder,
   isFinished,
+  optionText,
   statusLabel,
   type OrderDetail,
   type OrderStatus,
@@ -173,6 +174,9 @@ export default function OrderTracking() {
                 <span>
                   {item.quantity} × {item.name}
                   {item.note && <span className="text-gray-400"> ({item.note})</span>}
+                  {optionText(item.options) && (
+                    <span className="block text-xs text-gray-500">{optionText(item.options)}</span>
+                  )}
                 </span>
                 <span>{vnd(item.lineTotal)}</span>
               </li>

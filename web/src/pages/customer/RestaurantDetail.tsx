@@ -7,6 +7,7 @@ import type { MenuItemDTO, OptionGroupDTO } from '../../api/restaurants'
 import { addCartItem, cartQueryKey, fetchCart } from '../../api/cart'
 import { getApiError } from '../../api/apiError'
 import { useAuth } from '../../auth/useAuth'
+import OptionPicker from '../../components/cart/OptionPicker'
 
 // Tên ngày trong tuần (1=Thứ 2 ... 7=Chủ nhật)
 const DAY_NAMES: Record<number, string> = {
@@ -90,6 +91,9 @@ export default function RestaurantDetail() {
     onError: (error) => setCartError(getApiError(error).message),
   })
 
+  // Món có tùy chọn (size, topping...) thì mở hộp chọn trước khi thêm (Khang, tuần 7)
+  const [pickingItem, setPickingItem] = useState<MenuItemDTO | null>(null)
+
   function handleAdd(item: MenuItemDTO) {
     if (!user) {
       navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)
@@ -99,6 +103,15 @@ export default function RestaurantDetail() {
       setCartError('Chỉ tài khoản khách hàng mới đặt món được')
       return
     }
+    if (item.optionGroups.length > 0) {
+      setCartError(null)
+      setPickingItem(item)
+      return
+    }
+    addToCart(item, [])
+  }
+
+  function addToCart(item: MenuItemDTO, optionIds: number[]) {
     // Giỏ chỉ chứa món của 1 quán: đang có món quán khác thì hỏi trước khi thay giỏ
     let replaceCart = false
     if (cart?.restaurantId && cart.restaurantId !== restaurantId) {
@@ -107,7 +120,10 @@ export default function RestaurantDetail() {
       }
       replaceCart = true
     }
-    addMutation.mutate({ menuItemId: item.id, quantity: 1, replaceCart })
+    addMutation.mutate(
+      { menuItemId: item.id, quantity: 1, replaceCart, optionIds },
+      { onSuccess: () => setPickingItem(null) },
+    )
   }
 
   if (loadingInfo) return <LoadingSkeleton />
@@ -279,7 +295,19 @@ export default function RestaurantDetail() {
       </div>
 
       {/* Lỗi khi thêm món (món hết, quán đóng...) và thanh giỏ hàng của quán này */}
-      {cartError && <p className="mt-4 rounded bg-red-50 p-2 text-sm text-red-700">{cartError}</p>}
+      {cartError && !pickingItem && <p className="mt-4 rounded bg-red-50 p-2 text-sm text-red-700">{cartError}</p>}
+      {pickingItem && (
+        <OptionPicker
+          item={pickingItem}
+          busy={addMutation.isPending}
+          error={cartError}
+          onCancel={() => {
+            setPickingItem(null)
+            setCartError(null)
+          }}
+          onConfirm={(optionIds) => addToCart(pickingItem, optionIds)}
+        />
+      )}
       {cart && cart.restaurantId === restaurantId && cart.itemCount > 0 && (
         <div className="sticky bottom-4 mt-6 flex items-center justify-between rounded-xl bg-orange-600 px-4 py-3 text-white shadow-lg">
           <span>

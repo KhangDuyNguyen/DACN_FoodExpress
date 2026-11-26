@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { getApiError } from '../../api/apiError'
 import { cartQueryKey, fetchCart, removeCartItem, updateCartItem, type Cart as CartData, type CartItem } from '../../api/cart'
+import { optionText } from '../../api/orders'
 
 function vnd(amount: number) {
   return `${amount.toLocaleString('vi-VN')}đ`
@@ -63,9 +64,12 @@ export default function Cart() {
                 <p className="font-medium text-gray-900">{item.name}</p>
                 <p className="font-semibold text-gray-900">{vnd(item.lineTotal)}</p>
               </div>
+              {item.options.length > 0 && <p className="text-xs text-gray-600">{optionText(item.options)}</p>}
               {item.note && <p className="text-xs text-gray-500">Ghi chú: {item.note}</p>}
               {!item.isAvailable && (
-                <p className="text-xs font-medium text-red-600">Món này đã hết, vui lòng xóa khỏi giỏ để đặt hàng</p>
+                <p className="text-xs font-medium text-red-600">
+                  Món này (hoặc tùy chọn đã chọn) đã hết, vui lòng xóa khỏi giỏ để đặt hàng
+                </p>
               )}
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-gray-500">{vnd(item.unitPrice)}</span>

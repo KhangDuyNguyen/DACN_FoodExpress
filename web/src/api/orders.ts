@@ -70,13 +70,27 @@ export interface PriceBreakdown {
   voucherMessage: string | null
 }
 
+// 1 tuy chon cua mon trong don (ten, gia LUC DAT)
+export interface OrderItemOption {
+  name: string
+  extraPrice: number
+}
+
 export interface OrderItem {
   menuItemId: number | null
   name: string // ten mon luc dat
-  unitPrice: number // gia luc dat
+  unitPrice: number // gia luc dat, da gom gia cac tuy chon
   quantity: number
   note: string | null
   lineTotal: number
+  options?: OrderItemOption[] // tuan 7: size, topping... (du lieu cu co the khong co)
+}
+
+// "Lớn (+10.000đ), Trân châu (+5.000đ)": hien tuy chon da chon duoi ten mon. Tuy chon mien phi thi khong ghi gia.
+export function optionText(options: { name: string; extraPrice: number }[] | undefined): string {
+  return (options ?? [])
+    .map((o) => (o.extraPrice > 0 ? `${o.name} (+${o.extraPrice.toLocaleString('vi-VN')}đ)` : o.name))
+    .join(', ')
 }
 
 export interface OrderHistory {

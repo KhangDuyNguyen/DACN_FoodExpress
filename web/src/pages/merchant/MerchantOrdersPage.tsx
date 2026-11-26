@@ -31,7 +31,7 @@ import {
   fetchMerchantOrders,
   fetchMyRestaurants,
 } from '../../api/merchantOrders'
-import { statusLabel, type MerchantOrderSummary, type OrderStatus } from '../../api/orders'
+import { optionText, statusLabel, type MerchantOrderSummary, type OrderStatus } from '../../api/orders'
 import type { PageResponse } from '../../api/page'
 
 // Man hinh nhan don va doi trang thai voi cap nhat thoi gian thuc qua WebSocket STOMP
@@ -380,11 +380,17 @@ export const MerchantOrdersPage: React.FC = () => {
           {o.items && o.items.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {o.items.map((item, idx) => (
-                <div key={`${o.id}-item-${item.menuItemId ?? idx}`} style={{ fontSize: 13 }}>
+                // Khang (tuan 7): 1 mon co the nam o nhieu dong (khac size, topping) nen key dung vi tri dong
+                <div key={`${o.id}-item-${idx}`} style={{ fontSize: 13 }}>
                   <Text strong>{item.quantity}×</Text> {item.name}{' '}
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     ({vnd(item.unitPrice)})
                   </Text>
+                  {optionText(item.options) && (
+                    <div>
+                      <Text style={{ fontSize: 12 }}>+ {optionText(item.options)}</Text>
+                    </div>
+                  )}
                   {item.note && (
                     <div>
                       <Text type="warning" style={{ fontSize: 12 }}>
@@ -626,12 +632,25 @@ export const MerchantOrdersPage: React.FC = () => {
             <Table
               style={{ marginTop: 16 }}
               size="small"
-              // Trong 1 don, cung mon va cung ghi chu da duoc gop luc them vao gio nen bo 3 nay khong trung
-              rowKey={(i) => `${i.menuItemId}-${i.name}-${i.note ?? ''}`}
+              // Trong 1 don, cung mon + cung ghi chu + cung tuy chon da duoc gop luc them vao gio nen bo nay khong trung
+              rowKey={(i) => `${i.menuItemId}-${i.name}-${i.note ?? ''}-${optionText(i.options)}`}
               pagination={false}
               dataSource={detail.items}
               columns={[
-                { title: 'Món', key: 'name', render: (_, i) => (i.note ? `${i.name} (${i.note})` : i.name) },
+                {
+                  title: 'Món',
+                  key: 'name',
+                  render: (_, i) => (
+                    <>
+                      {i.note ? `${i.name} (${i.note})` : i.name}
+                      {optionText(i.options) && (
+                        <div>
+                          <Text type="secondary">{optionText(i.options)}</Text>
+                        </div>
+                      )}
+                    </>
+                  ),
+                },
                 { title: 'SL', dataIndex: 'quantity', key: 'quantity', align: 'center' },
                 { title: 'Thành tiền', key: 'lineTotal', align: 'right', render: (_, i) => vnd(i.lineTotal) },
               ]}

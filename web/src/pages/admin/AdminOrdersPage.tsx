@@ -5,7 +5,7 @@ import type { Dayjs } from 'dayjs'
 import { useState } from 'react'
 import { getApiError } from '../../api/apiError'
 import { fetchAdminOrder, fetchAdminOrders, type AdminOrderSummary } from '../../api/adminOrders'
-import { ORDER_STATUS_LABEL, statusLabel, type OrderStatus } from '../../api/orders'
+import { ORDER_STATUS_LABEL, optionText, statusLabel, type OrderStatus } from '../../api/orders'
 
 // Trang admin don toan san (Khang, tuan 6): loc, tim, xem chi tiet. Chi xem, khong doi trang thai.
 
@@ -181,7 +181,21 @@ export default function AdminOrdersPage() {
               pagination={false}
               dataSource={order.items}
               columns={[
-                { title: 'Món', dataIndex: 'name' },
+                {
+                  title: 'Món',
+                  key: 'name',
+                  render: (_, item) => (
+                    <>
+                      {item.name}
+                      {/* Tuy chon (size, topping...) cua mon, ten va gia luc dat */}
+                      {optionText(item.options) && (
+                        <div>
+                          <Typography.Text type="secondary">{optionText(item.options)}</Typography.Text>
+                        </div>
+                      )}
+                    </>
+                  ),
+                },
                 { title: 'SL', dataIndex: 'quantity', align: 'right' },
                 { title: 'Thành tiền', dataIndex: 'lineTotal', align: 'right', render: vnd },
               ]}
