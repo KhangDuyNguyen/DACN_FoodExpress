@@ -39,6 +39,10 @@ public class VnPayService {
     private static final Logger log = LoggerFactory.getLogger(VnPayService.class);
     private static final String METHOD = "VNPAY";
     private static final int EXPIRE_MINUTES = 15;
+    /** Ma 11 trong bang ma loi VNPay: "Da het han cho thanh toan". Ghi vao ly do huy don qua han. */
+    private static final String EXPIRED_CODE = "11";
+    /** Moi lan quet xu ly toi da 50 giao dich qua han, con lai de lan sau. */
+    private static final int CLEANUP_BATCH = 50;
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     /** Ly do theo vnp_ResponseCode (bang ma loi trong tai lieu VNPay) de hien cho khach. */
@@ -133,6 +137,55 @@ public class VnPayService {
                 && "00".equals(params.get("vnp_TransactionStatus"));
         boolean updated = paymentResultService.apply(payment, success, params.get("vnp_ResponseCode"), toJson(params));
         return updated ? VnPayIpnResponse.CONFIRMED : VnPayIpnResponse.ALREADY_CONFIRMED;
+    }
+
+    // ----- 4. Don qua han thanh toan (tuan 6) -----
+
+    /**
+     * Xu ly giao dich VNPay da qua han thanh toan ma van PENDING (khach bo ngang trang VNPay, IPN khong toi).
+     * VnPayCleanupScheduler goi ham nay moi phut. Moi giao dich hoi VNPay lan cuoi (querydr) roi moi quyet:
+     *   - da tra (00 + 00, dung so tien): xac nhan don nhu IPN, khong huy nham don khach vua tra sat gio;
+     *   - VNPay khong co giao dich (91), hoac co nhung chua thanh cong: huy don voi ma 11 ("Da het han cho thanh toan");
+     *   - khong hoi duoc (loi mang, sai chu ky phan hoi...) hoac so tien lech: de nguyen, lan quet sau hoi lai.
+     *
+     * @return so giao dich da cap nhat
+     */
+    public int settleExpiredPayments() {
+        if (!props.isConfigured()) {
+            return 0; // chua co khoa VNPay thi khong hoi VNPay duoc (va cung khong tao duoc don VNPay moi)
+        }
+        // Qua han thanh toan (15 phut) them 1 phut cho chac. created_at luu gio Viet Nam nen so bang gio Viet Nam.
+        LocalDateTime createdBefore = LocalDateTime.now(VIETNAM).minusMinutes(EXPIRE_MINUTES + 1L);
+        int settled = 0;
+        for (PaymentRow payment : paymentRepository.findPendingCreatedBefore(METHOD, createdBefore, CLEANUP_BATCH)) {
+            try {
+                if (settleExpired(payment)) {
+                    settled++;
+                }
+            } catch (RuntimeException ex) {
+                // 1 giao dich loi khong chan cac giao dich con lai; lan quet sau thu lai
+                log.error("Khong xu ly duoc giao dich VNPay qua han {}", payment.transactionRef(), ex);
+            }
+        }
+        return settled;
+    }
+
+    /** @return true neu da ghi ket qua (xac nhan hoac huy), false neu de nguyen cho lan sau */
+    private boolean settleExpired(PaymentRow payment) {
+        VnPayClient.QueryResult result = vnPayClient.queryTransaction(payment.transactionRef(), payment.createdAt());
+        boolean vnPayHasIt = "00".equals(result.responseCode());
+        if (vnPayHasIt && "00".equals(result.transactionStatus())) {
+            if (!sameAmount(payment, result.amount())) {
+                log.warn("querydr giao dich qua han {} bao da tra nhung so tien khong khop, chua cap nhat",
+                        payment.transactionRef());
+                return false;
+            }
+            return paymentResultService.apply(payment, true, "00", toJson(result.raw()));
+        }
+        if (vnPayHasIt || "91".equals(result.responseCode())) {
+            return paymentResultService.apply(payment, false, EXPIRED_CODE, toJson(result.raw()));
+        }
+        return false;
     }
 
     // ----- 3. Trang quay ve -----

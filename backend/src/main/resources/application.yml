@@ -39,3 +39,6 @@ app:
     api-url: ${VNPAY_API_URL:https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
     # Trang cua web nhan ket qua khi khach thanh toan xong
     return-url: ${VNPAY_RETURN_URL:http://localhost:5173/payment/vnpay-return}
+    cleanup:
+      # Moi phut xu ly don VNPay qua han thanh toan (hoi VNPay truoc khi huy). Dat false de tat.
+      enabled: ${VNPAY_CLEANUP_ENABLED:true}
