@@ -86,6 +86,23 @@ public class UserRepository {
         return keyHolder.getKey().longValue();
     }
 
+    /** Sua ho ten, email cua 1 user. email null = khong co email. Trung email (cot UNIQUE) -> DuplicateKeyException. */
+    public void updateProfile(long id, String fullName, String email) {
+        String sql = "UPDATE users SET full_name = :fullName, email = :email WHERE id = :id";
+        // MapSqlParameterSource vi Map.of() khong chap nhan gia tri null (email)
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("fullName", fullName)
+                .addValue("email", email)
+                .addValue("id", id);
+        jdbc.update(sql, params);
+    }
+
+    /** Luu mat khau moi (da bam BCrypt o Service, khong bao gio luu mat khau that). */
+    public void updatePasswordHash(long id, String passwordHash) {
+        String sql = "UPDATE users SET password_hash = :passwordHash WHERE id = :id";
+        jdbc.update(sql, Map.of("passwordHash", passwordHash, "id", id));
+    }
+
     public void updateLastLogin(long id) {
         String sql = "UPDATE users SET last_login_at = NOW() WHERE id = :id";
         jdbc.update(sql, Map.of("id", id));

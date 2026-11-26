@@ -39,7 +39,7 @@ export default function CustomerLayout() {
               <>
                 {/* Khach bam vao ten de vao so dia chi */}
                 {isCustomer ? (
-                  <Link to="/profile/addresses" className="font-medium text-gray-800 hover:text-orange-600">
+                  <Link to="/profile" className="font-medium text-gray-800 hover:text-orange-600">
                     👤 {user.fullName}
                   </Link>
                 ) : (

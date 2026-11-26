@@ -13,6 +13,7 @@ import Login from './pages/customer/Login'
 import MyOrders from './pages/customer/MyOrders'
 import OrderSuccess from './pages/customer/OrderSuccess'
 import OrderTracking from './pages/customer/OrderTracking'
+import Profile from './pages/customer/Profile'
 import Register from './pages/customer/Register'
 import RestaurantDetail from './pages/customer/RestaurantDetail'
 import RestaurantList from './pages/customer/RestaurantList'
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="orders/:id" element={<OrderTracking />} />
           <Route path="orders/:id/success" element={<OrderSuccess />} />
           <Route path="payment/vnpay-return" element={<VnPayReturn />} />
+          <Route path="profile" element={<Profile />} />
           <Route path="profile/addresses" element={<Addresses />} />
         </Route>
       </Route>
