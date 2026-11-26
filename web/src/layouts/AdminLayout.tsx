@@ -18,6 +18,9 @@ import {
   ShopOutlined,
   CarOutlined,
   CustomerServiceOutlined,
+  TeamOutlined,
+  FileTextOutlined,
+  DollarOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -44,6 +47,10 @@ export const AdminLayout: React.FC = () => {
     if (path.startsWith('/admin/merchants-approval')) return '/admin/merchants-approval'
     if (path.startsWith('/admin/drivers-approval')) return '/admin/drivers-approval'
     if (path.startsWith('/admin/support')) return '/admin/support'
+    // Phan cua Khang (tuan 6)
+    if (path.startsWith('/admin/users')) return '/admin/users'
+    if (path.startsWith('/admin/orders')) return '/admin/orders'
+    if (path.startsWith('/admin/delivery-fees')) return '/admin/delivery-fees'
     return '/admin'
   }
 
@@ -78,6 +85,25 @@ export const AdminLayout: React.FC = () => {
       icon: <CustomerServiceOutlined />,
       label: 'Hỗ trợ khách hàng',
       onClick: () => navigate('/admin/support'),
+    },
+    // Phan cua Khang (tuan 6): nguoi dung, don toan san, phi ship
+    {
+      key: '/admin/users',
+      icon: <TeamOutlined />,
+      label: 'Người dùng',
+      onClick: () => navigate('/admin/users'),
+    },
+    {
+      key: '/admin/orders',
+      icon: <FileTextOutlined />,
+      label: 'Đơn toàn sàn',
+      onClick: () => navigate('/admin/orders'),
+    },
+    {
+      key: '/admin/delivery-fees',
+      icon: <DollarOutlined />,
+      label: 'Phí giao hàng',
+      onClick: () => navigate('/admin/delivery-fees'),
     },
   ]
 
