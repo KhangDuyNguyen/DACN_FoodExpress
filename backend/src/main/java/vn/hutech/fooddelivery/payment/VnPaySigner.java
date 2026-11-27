@@ -30,6 +30,18 @@ public final class VnPaySigner {
             "vnp_Amount", "vnp_BankCode", "vnp_PayDate", "vnp_TransactionNo", "vnp_TransactionType",
             "vnp_TransactionStatus", "vnp_OrderInfo", "vnp_PromotionCode", "vnp_PromotionAmount");
 
+    /** Thu tu truong trong chuoi ky khi GUI yeu cau hoan tien (theo tai lieu refund). */
+    private static final List<String> REFUND_REQUEST_FIELDS = List.of(
+            "vnp_RequestId", "vnp_Version", "vnp_Command", "vnp_TmnCode", "vnp_TransactionType", "vnp_TxnRef",
+            "vnp_Amount", "vnp_TransactionNo", "vnp_TransactionDate", "vnp_CreateBy", "vnp_CreateDate",
+            "vnp_IpAddr", "vnp_OrderInfo");
+
+    /** Thu tu truong trong chuoi ky cua PHAN HOI hoan tien (theo tai lieu refund). */
+    private static final List<String> REFUND_RESPONSE_FIELDS = List.of(
+            "vnp_ResponseId", "vnp_Command", "vnp_ResponseCode", "vnp_Message", "vnp_TmnCode", "vnp_TxnRef",
+            "vnp_Amount", "vnp_BankCode", "vnp_PayDate", "vnp_TransactionNo", "vnp_TransactionType",
+            "vnp_TransactionStatus", "vnp_OrderInfo");
+
     private VnPaySigner() {
     }
 
@@ -91,6 +103,16 @@ public final class VnPaySigner {
     /** Chuoi ky cua phan hoi querydr, de kiem tra phan hoi dung la cua VNPay. Truong khong co thi de rong. */
     public static String queryResponseData(Map<String, Object> response) {
         return joinFields(response, QUERY_RESPONSE_FIELDS);
+    }
+
+    /** Chuoi ky khi gui yeu cau hoan tien (vnp_Command=refund): gia tri cac truong theo thu tu tai lieu, noi "|". */
+    public static String refundRequestData(Map<String, String> body) {
+        return joinFields(body, REFUND_REQUEST_FIELDS);
+    }
+
+    /** Chuoi ky cua phan hoi refund, de kiem tra phan hoi dung la cua VNPay. */
+    public static String refundResponseData(Map<String, Object> response) {
+        return joinFields(response, REFUND_RESPONSE_FIELDS);
     }
 
     private static String joinFields(Map<String, ?> data, List<String> fields) {

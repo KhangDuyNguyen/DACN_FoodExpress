@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import vn.hutech.fooddelivery.config.SecurityConfig;
 import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderItemResponse;
+import vn.hutech.fooddelivery.payment.RefundService;
 import vn.hutech.fooddelivery.security.JwtProperties;
 import vn.hutech.fooddelivery.security.JwtService;
 import vn.hutech.fooddelivery.security.RestAccessDeniedHandler;
@@ -127,6 +128,12 @@ class MerchantOrderControllerWebMvcTest {
         @Bean
         OrderService orderService(OrderRepository orderRepository) {
             return new OrderService(null, orderRepository, null, null, null);
+        }
+
+        /** Hoan tien (Khang, tuan 7): API danh sach don khong dung toi, chi can co bean de tao OrderManagementService. */
+        @Bean
+        RefundService refundService() {
+            return new RefundService(null, null, null, null, null);
         }
     }
 

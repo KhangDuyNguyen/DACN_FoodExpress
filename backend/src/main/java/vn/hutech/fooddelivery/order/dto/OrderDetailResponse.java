@@ -6,7 +6,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** Chi tiet 1 don hang: thong tin giao, tai xe (null neu chua co), cac mon, bang tien va lich su trang thai. */
+/**
+ * Chi tiet 1 don hang: thong tin giao, tai xe (null neu chua co), cac mon, bang tien va lich su trang thai.
+ * paymentStatus (tuan 7): tinh trang thanh toan online PENDING / SUCCESS / FAILED / REFUNDING (dang cho hoan) /
+ * REFUNDED / REFUND_FAILED (VNPay tu choi hoan); don COD = null.
+ */
 public record OrderDetailResponse(
         long id,
         String code,
@@ -19,6 +23,7 @@ public record OrderDetailResponse(
         String deliveryAddress,
         String note,
         String paymentMethod,
+        String paymentStatus,
         List<OrderItemResponse> items,
         BigDecimal subtotal,
         BigDecimal deliveryFee,
@@ -34,7 +39,7 @@ public record OrderDetailResponse(
 ) {
 
     public static OrderDetailResponse from(OrderRow row, List<OrderItemResponse> items,
-                                           List<OrderHistoryResponse> history) {
+                                           List<OrderHistoryResponse> history, String paymentStatus) {
         return new OrderDetailResponse(
                 row.id(),
                 row.code(),
@@ -49,6 +54,7 @@ public record OrderDetailResponse(
                 row.deliveryAddress(),
                 row.note(),
                 row.paymentMethod(),
+                paymentStatus,
                 items,
                 row.subtotal(),
                 row.deliveryFee(),

@@ -99,6 +99,24 @@ public class PaymentRepository {
         return jdbc.query(sql, params, MAPPER);
     }
 
+    /** Giao dich online DA THANH TOAN cua don (de hoan tien khi don bi huy); COD hoac chua tra thi rong. */
+    public Optional<PaymentRow> findSuccessByOrderId(long orderId) {
+        String sql = """
+                SELECT id, order_id, method, amount, status, transaction_ref, created_at
+                FROM payments
+                WHERE order_id = :orderId AND status = 'SUCCESS'
+                ORDER BY id DESC
+                LIMIT 1
+                """;
+        return jdbc.query(sql, Map.of("orderId", orderId), MAPPER).stream().findFirst();
+    }
+
+    /** Da hoan tien xong: SUCCESS -> REFUNDED. */
+    public void markRefunded(long paymentId) {
+        jdbc.update("UPDATE payments SET status = 'REFUNDED' WHERE id = :id AND status = 'SUCCESS'",
+                Map.of("id", paymentId));
+    }
+
     /**
      * Ghi ket qua CHI KHI giao dich con PENDING (dieu kien "AND status = 'PENDING'").
      * VNPay goi IPN nhieu lan, hoac IPN va trang quay ve den cung luc: chi 1 lan khop 1 dong,

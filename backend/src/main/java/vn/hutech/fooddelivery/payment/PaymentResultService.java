@@ -13,7 +13,7 @@ import vn.hutech.fooddelivery.order.event.OrderStatusChangedEvent;
 
 /**
  * Ghi ket qua thanh toan vao database trong MOT transaction: bang payments va trang thai don + lich su.
- * Dung chung cho IPN va cho lan hoi lai VNPay (querydr) khi khach quay ve.
+ * Dung chung cho IPN va cho lan hoi lai VNPay (querydr) khi khach quay ve; tu tuan 7 ghi ca ket qua hoan tien.
  *
  * Tach thanh class rieng vi VnPayService goi ham nay sau khi goi HTTP sang VNPay: goi 1 ham @Transactional
  * ngay trong cung class thi Spring KHONG mo transaction (khong di qua proxy), con goi sang bean khac thi co.
@@ -23,13 +23,18 @@ public class PaymentResultService {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentResultService.class);
 
+    /** Ly do hoan tien khi tien ve sau luc don da bi huy. */
+    static final String LATE_PAYMENT_REASON = "Đơn đã hủy trước khi nhận được tiền VNPay";
+
     private final PaymentRepository paymentRepository;
+    private final RefundRepository refundRepository;
     private final OrderRepository orderRepository;
     private final ApplicationEventPublisher events;
 
-    public PaymentResultService(PaymentRepository paymentRepository, OrderRepository orderRepository,
-                                ApplicationEventPublisher events) {
+    public PaymentResultService(PaymentRepository paymentRepository, RefundRepository refundRepository,
+                                OrderRepository orderRepository, ApplicationEventPublisher events) {
         this.paymentRepository = paymentRepository;
+        this.refundRepository = refundRepository;
         this.orderRepository = orderRepository;
         this.events = events;
     }
@@ -49,20 +54,36 @@ public class PaymentResultService {
         OrderRow order = orderRepository.findById(payment.orderId())
                 .orElseThrow(() -> new IllegalStateException("Khong tim thay don " + payment.orderId()));
         if (success) {
-            placePaidOrder(order);
+            placePaidOrder(order, payment);
         } else {
             cancelUnpaidOrder(order, "Thanh toán VNPay không thành công (mã " + code + ")");
         }
         return true;
     }
 
+    /**
+     * Ghi ket qua hoan tien (tuan 7) trong 1 transaction:
+     * VNPay nhan -> refunds COMPLETED va payments REFUNDED; VNPay tu choi -> refunds REJECTED
+     * (giao dich van SUCCESS, admin xu ly tay).
+     */
+    @Transactional
+    public void finishRefund(RefundRow refund, boolean accepted) {
+        if (refundRepository.updateResult(refund.id(), accepted ? "COMPLETED" : "REJECTED") == 0) {
+            return; // da xu ly roi
+        }
+        if (accepted) {
+            paymentRepository.markRefunded(refund.paymentId());
+        }
+    }
+
     /** Da tra tien: don sang "Cho xac nhan", roi bao quan va moi tai xe giong het don COD vua dat. */
-    private void placePaidOrder(OrderRow order) {
+    private void placePaidOrder(OrderRow order, PaymentRow payment) {
         if (orderRepository.updateStatus(order.id(), "PENDING_PAYMENT", "PLACED", null) == 0) {
-            // Tien da ve nhung don khong con cho thanh toan nua: phai hoan tien cho khach.
-            // TODO(khang): tao yeu cau hoan tien (bang refunds) cung phan hoan tien VNPay o tuan 6-7
-            log.warn("Don {} da duoc VNPay xac nhan thanh toan nhung dang o trang thai {}, can hoan tien",
+            // Tien da ve nhung don khong con cho thanh toan nua (vd da bi huy): khong mo lai don,
+            // ghi yeu cau hoan tien; tac vu dinh ky se gui sang VNPay (RefundService)
+            log.warn("Don {} da duoc VNPay xac nhan thanh toan nhung dang o trang thai {}, tao yeu cau hoan tien",
                     order.id(), order.status());
+            refundRepository.insertPending(payment.id(), payment.amount(), LATE_PAYMENT_REASON);
             return;
         }
         orderRepository.insertStatusHistory(order.id(), "PLACED", order.customerId(), "Đã thanh toán VNPay");
@@ -71,7 +92,7 @@ public class PaymentResultService {
         // Ben nghe dung AFTER_COMMIT: chi chay khi transaction nay commit (giong luc dat don COD)
         OrderRow placed = orderRepository.findById(order.id()).orElseThrow();
         OrderDetailResponse detail = OrderDetailResponse.from(placed, orderRepository.findItems(order.id()),
-                orderRepository.findHistory(order.id()));
+                orderRepository.findHistory(order.id()), "SUCCESS");
         events.publishEvent(new OrderPlacedEvent(order.id(), order.restaurantId(), detail));
     }
 

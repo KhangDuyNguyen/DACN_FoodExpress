@@ -3,6 +3,7 @@ package vn.hutech.fooddelivery.payment;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -37,19 +38,22 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Thanh toan VNPay (Module I): dat don VNPay, IPN, trang quay ve.
+ * Thanh toan VNPay (Module I): dat don VNPay, IPN, trang quay ve; tu huy don qua han (L); hoan tien (N).
  * Dung khoa gia (khong phai khoa sandbox that). Hai phan ben ngoai duoc thay bang mock:
  *   - VnPayClient: goi API querydr cua VNPay (test khong goi Internet);
  *   - AssignmentService (cua An): de kiem tra co/khong moi tai xe.
@@ -95,6 +99,9 @@ class VnPayPaymentIntegrationTest {
 
     @Autowired
     VnPayService vnPayService;
+
+    @Autowired
+    RefundService refundService;
 
     // ----- Dat don -----
 
@@ -402,6 +409,180 @@ class VnPayPaymentIntegrationTest {
         // Tra lai thoi diem cu de giao dich nay khong lam lech so dem cua test khac (test chay khong theo thu tu co dinh)
         jdbc.update("UPDATE payments SET created_at = created_at + INTERVAL 20 MINUTE WHERE order_id = :id",
                 Map.of("id", overdue.get("id").asLong()));
+    }
+
+    // ----- Hoan tien VNPay (Module N, tuan 7) -----
+
+    @Test
+    void cancellingPaidOrderCreatesRefundThatVnPayAccepts() throws Exception {
+        String customer = login("0911000001");
+        JsonNode order = paidVnPayOrder(customer);
+        long orderId = order.get("id").asLong();
+        String code = order.get("code").asText();
+        BigDecimal total = new BigDecimal(order.get("totalAmount").asText());
+        mockMvc.perform(get("/api/orders/{id}", orderId).header("Authorization", customer))
+                .andExpect(jsonPath("$.paymentStatus").value("SUCCESS"));
+
+        // Khach huy luc quan chua nhan don: 1 yeu cau hoan tien dung so tien da tra, ly do = ly do huy
+        cancelByCustomer(customer, orderId, "Đặt nhầm món")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.paymentStatus").value("REFUNDING"));
+        Map<String, Object> refund = refundOf(orderId);
+        assertEquals("PENDING", refund.get("status"));
+        assertEquals(0, total.compareTo((BigDecimal) refund.get("amount")));
+        assertEquals("Đặt nhầm món", refund.get("reason"));
+
+        // Tac vu dinh ky gui VNPay; VNPay nhan yeu cau (00) -> hoan tat, giao dich chuyen REFUNDED
+        when(vnPayClient.refund(any())).thenReturn(new VnPayClient.RefundResult("00", "05", Map.of()));
+        refundService.sendPendingRefunds();
+
+        // Gui dung giao dich: ma tham chieu, so tien, ma giao dich VNPay (luu tu IPN), thoi diem tao giao dich
+        RefundRow sent = sentRefund(code);
+        assertEquals(0, total.compareTo(sent.amount()));
+        assertEquals("14226112", sent.gatewayTransactionNo());
+        assertEquals(paymentCreatedAt(orderId), sent.paymentCreatedAt());
+        refund = refundOf(orderId);
+        assertEquals("COMPLETED", refund.get("status"));
+        assertNotNull(refund.get("processed_at"));
+        assertEquals("REFUNDED", paymentOf(orderId).get("status"));
+        mockMvc.perform(get("/api/orders/{id}", orderId).header("Authorization", customer))
+                .andExpect(jsonPath("$.paymentStatus").value("REFUNDED"));
+
+        // Lan quet sau khong gui lai yeu cau da xong
+        clearInvocations(vnPayClient);
+        refundService.sendPendingRefunds();
+        verify(vnPayClient, never()).refund(argThat(r -> code.equals(r.transactionRef())));
+    }
+
+    @Test
+    void merchantCancellingPaidOrderAlsoCreatesRefund() throws Exception {
+        JsonNode order = paidVnPayOrder(login("0911000001"));
+        long orderId = order.get("id").asLong();
+
+        mockMvc.perform(patch("/api/merchant/orders/{id}/status", orderId)
+                        .header("Authorization", login("0922000001"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CANCELLED\",\"reason\":\"Hết nguyên liệu\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentStatus").value("REFUNDING"));
+        assertEquals("PENDING", refundOf(orderId).get("status"));
+        assertEquals("Hết nguyên liệu", refundOf(orderId).get("reason"));
+
+        when(vnPayClient.refund(any())).thenReturn(new VnPayClient.RefundResult("00", "05", Map.of()));
+        refundService.sendPendingRefunds();
+        assertEquals("COMPLETED", refundOf(orderId).get("status"));
+    }
+
+    @Test
+    void refundWaitsWhenVnPayIsUnreachableAndFailsWhenVnPayRefuses() throws Exception {
+        String customer = login("0911000001");
+        JsonNode order = paidVnPayOrder(customer);
+        long orderId = order.get("id").asLong();
+        cancelByCustomer(customer, orderId, "Đổi ý").andExpect(status().isOk());
+
+        // Khong goi duoc VNPay (loi mang, phan hoi sai chu ky...): giu PENDING, lan quet sau gui lai
+        when(vnPayClient.refund(any())).thenReturn(new VnPayClient.RefundResult("99", null, Map.of()));
+        refundService.sendPendingRefunds();
+        assertEquals("PENDING", refundOf(orderId).get("status"));
+        assertEquals("SUCCESS", paymentOf(orderId).get("status"));
+
+        // VNPay tu choi han (95 = giao dich khong thanh cong ben VNPay): REJECTED, admin xu ly tay
+        when(vnPayClient.refund(any())).thenReturn(new VnPayClient.RefundResult("95", null, Map.of()));
+        refundService.sendPendingRefunds();
+        assertEquals("REJECTED", refundOf(orderId).get("status"));
+        assertNotNull(refundOf(orderId).get("processed_at"));
+        assertEquals("SUCCESS", paymentOf(orderId).get("status"));
+        mockMvc.perform(get("/api/orders/{id}", orderId).header("Authorization", customer))
+                .andExpect(jsonPath("$.paymentStatus").value("REFUND_FAILED"));
+    }
+
+    @Test
+    void refundAlreadyBeingProcessedByVnPayCountsAsDone() throws Exception {
+        String customer = login("0911000001");
+        JsonNode order = paidVnPayOrder(customer);
+        long orderId = order.get("id").asLong();
+        cancelByCustomer(customer, orderId, "Đổi ý").andExpect(status().isOk());
+
+        // 94 = da gui yeu cau hoan truoc do, VNPay dang xu ly (vd lan truoc gui duoc nhung chua kip ghi ket qua)
+        when(vnPayClient.refund(any())).thenReturn(new VnPayClient.RefundResult("94", null, Map.of()));
+        refundService.sendPendingRefunds();
+
+        assertEquals("COMPLETED", refundOf(orderId).get("status"));
+        assertEquals("REFUNDED", paymentOf(orderId).get("status"));
+    }
+
+    @Test
+    void moneyArrivingAfterOrderWasCancelledIsRefunded() throws Exception {
+        JsonNode order = placeOrder(login("0911000001"), "VNPAY");
+        long orderId = order.get("id").asLong();
+        // Don da bi huy trong luc khach van o trang VNPay (gia lap thang trong database)
+        jdbc.update("UPDATE orders SET status = 'CANCELLED', cancel_reason = 'Huy thu' WHERE id = :id",
+                Map.of("id", orderId));
+
+        callIpn(vnpayResult(order.get("code").asText(), vnpAmount(order), "00", "00"))
+                .andExpect(jsonPath("$.RspCode").value("00"));
+
+        // Tien da ve: ghi nhan giao dich nhung KHONG mo lai don, ma tao yeu cau hoan tien
+        assertEquals("CANCELLED", orderStatus(orderId));
+        assertEquals("SUCCESS", paymentOf(orderId).get("status"));
+        assertEquals("PENDING", refundOf(orderId).get("status"));
+        assertEquals("Đơn đã hủy trước khi nhận được tiền VNPay", refundOf(orderId).get("reason"));
+        verify(assignmentService, never()).createOffer(orderId);
+
+        when(vnPayClient.refund(any())).thenReturn(new VnPayClient.RefundResult("00", "05", Map.of()));
+        refundService.sendPendingRefunds();
+        assertEquals("COMPLETED", refundOf(orderId).get("status"));
+    }
+
+    @Test
+    void cancellingCodOrderCreatesNoRefund() throws Exception {
+        String customer = login("0911000001");
+        long orderId = placeOrder(customer, "COD").get("id").asLong();
+
+        cancelByCustomer(customer, orderId, "Đổi ý")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentStatus").value(nullValue()));
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT COUNT(*) FROM refunds r JOIN payments p ON p.id = r.payment_id WHERE p.order_id = :id
+                """, Map.of("id", orderId), Integer.class));
+    }
+
+    /** Don VNPay da tra tien (IPN thanh cong), dang "Cho xac nhan". */
+    private JsonNode paidVnPayOrder(String customer) throws Exception {
+        JsonNode order = placeOrder(customer, "VNPAY");
+        callIpn(vnpayResult(order.get("code").asText(), vnpAmount(order), "00", "00"))
+                .andExpect(jsonPath("$.RspCode").value("00"));
+        return order;
+    }
+
+    private ResultActions cancelByCustomer(String token, long orderId, String reason) throws Exception {
+        return mockMvc.perform(post("/api/orders/{id}/cancel", orderId).header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of("reason", reason))));
+    }
+
+    /** Yeu cau hoan tien cua don (queryForMap bao loi neu khong co dung 1 dong). */
+    private Map<String, Object> refundOf(long orderId) {
+        return jdbc.queryForMap("""
+                SELECT r.status, r.amount, r.reason, r.processed_at
+                FROM refunds r JOIN payments p ON p.id = r.payment_id
+                WHERE p.order_id = :id
+                """, Map.of("id", orderId));
+    }
+
+    /** Yeu cau hoan tien da gui VNPay cho giao dich txnRef (test khac co the gui them giao dich khac). */
+    private RefundRow sentRefund(String txnRef) {
+        ArgumentCaptor<RefundRow> captor = ArgumentCaptor.forClass(RefundRow.class);
+        verify(vnPayClient, atLeastOnce()).refund(captor.capture());
+        return captor.getAllValues().stream()
+                .filter(r -> txnRef.equals(r.transactionRef()))
+                .findFirst().orElseThrow();
+    }
+
+    private LocalDateTime paymentCreatedAt(long orderId) {
+        return jdbc.queryForObject("SELECT created_at FROM payments WHERE order_id = :id",
+                Map.of("id", orderId), LocalDateTime.class);
     }
 
     /** Lui thoi diem tao giao dich 20 phut, nhu the khach da bo trang VNPay qua 15 phut. */

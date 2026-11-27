@@ -119,4 +119,53 @@ class VnPaySignerTest {
                         + "|14226112|01|00|Thanh toan don hang FD261117000001||",
                 VnPaySigner.queryResponseData(response));
     }
+
+    // ----- Hoan tien (vnp_Command=refund, tuan 7) -----
+
+    @Test
+    void refundRequestDataFollowsTheDocumentedFieldOrder() {
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("vnp_OrderInfo", "Hoan tien giao dich FD261117000001");  // thu tu dua vao khong quan trong
+        body.put("vnp_RequestId", "req1");
+        body.put("vnp_Version", "2.1.0");
+        body.put("vnp_Command", "refund");
+        body.put("vnp_TmnCode", "TESTTMN1");
+        body.put("vnp_TransactionType", "02");
+        body.put("vnp_TxnRef", "FD261117000001");
+        body.put("vnp_Amount", "1000000");
+        body.put("vnp_TransactionNo", "14226112");
+        body.put("vnp_TransactionDate", "20261117103000");
+        body.put("vnp_CreateBy", "FoodExpress");
+        body.put("vnp_CreateDate", "20261127090000");
+        body.put("vnp_IpAddr", "127.0.0.1");
+
+        String data = VnPaySigner.refundRequestData(body);
+        assertEquals("req1|2.1.0|refund|TESTTMN1|02|FD261117000001|1000000|14226112|20261117103000|FoodExpress"
+                + "|20261127090000|127.0.0.1|Hoan tien giao dich FD261117000001", data);
+        assertEquals("85ef458118ab3f533cd8d63b07a14eea64a6ac8bbff679227472eccfe55986b4"
+                        + "ad29c3ad04e55b81bc83f8161411f14e51b8980227cff309cc6be2836732d6f7",
+                VnPaySigner.hmacSha512(SECRET, data));
+    }
+
+    @Test
+    void refundResponseDataFollowsTheDocumentedFieldOrder() {
+        Map<String, Object> response = new HashMap<>();
+        response.put("vnp_ResponseId", "resp1");
+        response.put("vnp_Command", "refund");
+        response.put("vnp_ResponseCode", "00");
+        response.put("vnp_Message", "Refund Success");
+        response.put("vnp_TmnCode", "TESTTMN1");
+        response.put("vnp_TxnRef", "FD261117000001");
+        response.put("vnp_Amount", 1000000);
+        response.put("vnp_BankCode", "NCB");
+        response.put("vnp_PayDate", "20261127090005");
+        response.put("vnp_TransactionNo", "14226999");
+        response.put("vnp_TransactionType", "02");
+        response.put("vnp_TransactionStatus", "05");
+        response.put("vnp_OrderInfo", "Hoan tien giao dich FD261117000001");
+
+        assertEquals("resp1|refund|00|Refund Success|TESTTMN1|FD261117000001|1000000|NCB|20261127090005"
+                        + "|14226999|02|05|Hoan tien giao dich FD261117000001",
+                VnPaySigner.refundResponseData(response));
+    }
 }

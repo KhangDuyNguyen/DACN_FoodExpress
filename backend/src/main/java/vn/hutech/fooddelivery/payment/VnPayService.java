@@ -104,7 +104,7 @@ public class VnPayService {
         params.put("vnp_ReturnUrl", props.returnUrl());
         params.put("vnp_IpAddr", clientIp);
         params.put("vnp_CreateDate", createDate.format(VNPAY_TIME));
-        // TODO(khang): tu huy don PENDING_PAYMENT qua han nay bang tac vu dinh ky (ke hoach tuan 6-7)
+        // Qua han nay ma chua tra thi tac vu dinh ky huy don (settleExpiredPayments, tuan 6)
         params.put("vnp_ExpireDate", createDate.plusMinutes(EXPIRE_MINUTES).format(VNPAY_TIME));
         String query = VnPaySigner.buildQuery(params);
         return props.payUrl() + "?" + query + "&vnp_SecureHash=" + VnPaySigner.hmacSha512(props.hashSecret(), query);

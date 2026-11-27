@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.math.BigDecimal;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -18,7 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Goi API querydr cua VNPay de hoi ket qua 1 giao dich (may chu minh goi thang may chu VNPay).
+ * Goi API cua VNPay tu may chu minh: querydr (hoi ket qua 1 giao dich) va refund (hoan tien, tuan 7).
  * Tach rieng class nay de test thay bang mock, khong phai goi Internet.
  * Tai lieu: https://sandbox.vnpayment.vn/apis/docs/truy-van-hoan-tien/querydr&refund.html
  */
@@ -26,6 +27,10 @@ import java.util.UUID;
 public class VnPayClient {
 
     private static final Logger log = LoggerFactory.getLogger(VnPayClient.class);
+    /** vnp_TransactionType = 02: hoan tra toan phan (03 la hoan mot phan, nhom khong dung). */
+    private static final String FULL_REFUND = "02";
+    /** vnp_CreateBy: nguoi khoi tao hoan tien. Hoan tu dong khi don bi huy nen ghi ten he thong. */
+    private static final String CREATE_BY = "FoodExpress";
 
     private final VnPayProperties props;
     private final RestClient restClient;
@@ -79,6 +84,74 @@ public class VnPayClient {
         } catch (RestClientException ex) {
             log.warn("Khong goi duoc querydr cua VNPay cho giao dich {}: {}", txnRef, ex.getMessage());
             return QueryResult.unknown();
+        }
+    }
+
+    /**
+     * Gui yeu cau hoan TOAN BO so tien cua 1 giao dich da thanh toan (vnp_Command=refund).
+     *
+     * @return ket qua; loi mang hoac phan hoi sai chu ky thi tra ma "99" (chua ro), khong nem loi
+     */
+    public RefundResult refund(RefundRow refund) {
+        try {
+            Map<String, Object> response = restClient.post()
+                    .uri(props.apiUrl())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(refundRequest(refund))
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {
+                    });
+            if (response == null) {
+                return RefundResult.unknown();
+            }
+            String expected = VnPaySigner.hmacSha512(props.hashSecret(), VnPaySigner.refundResponseData(response));
+            if (!VnPaySigner.sameHash(expected, text(response.get("vnp_SecureHash")))) {
+                log.warn("Phan hoi refund cua giao dich {} sai chu ky, bo qua", refund.transactionRef());
+                return RefundResult.unknown();
+            }
+            return new RefundResult(text(response.get("vnp_ResponseCode")),
+                    text(response.get("vnp_TransactionStatus")), response);
+        } catch (RestClientException ex) {
+            log.warn("Khong goi duoc refund cua VNPay cho giao dich {}: {}", refund.transactionRef(), ex.getMessage());
+            return RefundResult.unknown();
+        }
+    }
+
+    /** Noi dung yeu cau hoan tien da ky, dung theo bang tham so cua tai lieu refund. */
+    Map<String, String> refundRequest(RefundRow refund) {
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("vnp_RequestId", UUID.randomUUID().toString().replace("-", "")); // 32 ky tu, khong trung
+        body.put("vnp_Version", VnPayService.VERSION);
+        body.put("vnp_Command", "refund");
+        body.put("vnp_TmnCode", props.tmnCode());
+        body.put("vnp_TransactionType", FULL_REFUND);
+        body.put("vnp_TxnRef", refund.transactionRef());
+        // Giong luc thanh toan: so tien x 100
+        body.put("vnp_Amount", refund.amount().multiply(BigDecimal.valueOf(100)).toBigIntegerExact().toString());
+        // Ma giao dich phia VNPay (tuy chon theo tai lieu, nhung co trong chuoi ky); khong co thi de rong
+        body.put("vnp_TransactionNo", refund.gatewayTransactionNo() == null ? "" : refund.gatewayTransactionNo());
+        body.put("vnp_TransactionDate", refund.paymentCreatedAt().format(VnPayService.VNPAY_TIME));
+        body.put("vnp_CreateBy", CREATE_BY);
+        body.put("vnp_CreateDate", LocalDateTime.now(VnPayService.VIETNAM).format(VnPayService.VNPAY_TIME));
+        body.put("vnp_IpAddr", serverIp());
+        body.put("vnp_OrderInfo", "Hoan tien giao dich " + refund.transactionRef());
+        body.put("vnp_SecureHash", VnPaySigner.hmacSha512(props.hashSecret(), VnPaySigner.refundRequestData(body)));
+        return body;
+    }
+
+    /**
+     * Ket qua refund.
+     *
+     * @param responseCode      theo bang ma refund cua VNPay: "00" nhan yeu cau, "94" da gui truoc do (dang xu ly),
+     *                          "91" khong thay giao dich, "95" giao dich khong thanh cong ben VNPay;
+     *                          "99" (ke ca minh tu dat khi loi mang/sai chu ky) = chua ro
+     * @param transactionStatus tinh trang giao dich hoan ("05" VNPay dang xu ly, "06" da gui sang ngan hang...)
+     * @param raw               toan bo phan hoi de ghi log, doi soat
+     */
+    public record RefundResult(String responseCode, String transactionStatus, Map<String, Object> raw) {
+
+        static RefundResult unknown() {
+            return new RefundResult("99", null, Map.of());
         }
     }
 

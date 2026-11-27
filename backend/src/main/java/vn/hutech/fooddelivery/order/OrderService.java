@@ -187,7 +187,8 @@ public class OrderService {
     public OrderDetailResponse getDetail(long orderId) {
         OrderRow row = orderRepository.findById(orderId)
                 .orElseThrow(() -> new NotFoundException("Không tìm thấy đơn hàng"));
-        return OrderDetailResponse.from(row, orderRepository.findItems(orderId), orderRepository.findHistory(orderId));
+        return OrderDetailResponse.from(row, orderRepository.findItems(orderId), orderRepository.findHistory(orderId),
+                orderRepository.findPaymentStatus(orderId).orElse(null));
     }
 
     /**

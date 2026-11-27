@@ -15,6 +15,7 @@ import vn.hutech.fooddelivery.order.dto.MerchantOrderSummaryResponse;
 import vn.hutech.fooddelivery.order.dto.OrderDetailResponse;
 import vn.hutech.fooddelivery.order.dto.OrderSummaryResponse;
 import vn.hutech.fooddelivery.order.event.OrderStatusChangedEvent;
+import vn.hutech.fooddelivery.payment.RefundService;
 
 /**
  * Quan ly don sau khi dat: khach xem/huy don cua minh, chu quan xem va doi trang thai don cua quan minh,
@@ -29,12 +30,15 @@ public class OrderManagementService {
     private final OrderRepository orderRepository;
     private final OrderService orderService;
     private final ApplicationEventPublisher events;
+    /** Hoan tien VNPay khi don da tra tien bi huy (package payment, tuan 7). */
+    private final RefundService refundService;
 
     public OrderManagementService(OrderRepository orderRepository, OrderService orderService,
-                                  ApplicationEventPublisher events) {
+                                  ApplicationEventPublisher events, RefundService refundService) {
         this.orderRepository = orderRepository;
         this.orderService = orderService;
         this.events = events;
+        this.refundService = refundService;
     }
 
     // ----- Khach hang -----
@@ -152,7 +156,8 @@ public class OrderManagementService {
      *   2. Tai xe da nhan don thi khong huy duoc nua -> 409.
      *   3. UPDATE ... WHERE status = trang thai vua doc; 0 dong nghia la co nguoi vua doi truoc -> 409.
      *   4. Ghi them 1 dong lich su (ai doi, luc nao, ly do).
-     *   5. Phat OrderStatusChangedEvent trong cung transaction de ghi thu nhap dong bo.
+     *   5. Huy don da tra tien VNPay -> ghi yeu cau hoan tien (tuan 7).
+     *   6. Phat OrderStatusChangedEvent trong cung transaction de ghi thu nhap dong bo.
      */
     private void changeStatus(LockedOrder order, Actor actor, String toStatus, long changedBy, String reason) {
         boolean hasDriver = order.driverId() != null;
@@ -173,7 +178,10 @@ public class OrderManagementService {
             throw new ConflictException("Đơn vừa được cập nhật, vui lòng tải lại trang");
         }
         orderRepository.insertStatusHistory(order.id(), toStatus, changedBy, reason);
-        // TODO(khang): don VNPay da tra tien ma bi huy (khach hoac quan huy) thi tao yeu cau hoan tien (tuan 6-7)
+        // Don da tra tien VNPay ma bi huy: ghi yeu cau hoan tien trong cung transaction (tac vu dinh ky gui VNPay)
+        if ("CANCELLED".equals(toStatus)) {
+            refundService.requestRefundIfPaid(order.id(), reason);
+        }
         events.publishEvent(new OrderStatusChangedEvent(order.id(), order.restaurantId(), order.customerId(),
                 order.status(), toStatus, changedBy));
     }

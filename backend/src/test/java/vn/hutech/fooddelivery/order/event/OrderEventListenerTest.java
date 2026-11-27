@@ -53,6 +53,7 @@ class OrderEventListenerTest {
                 "123 Đường Số 1",
                 "Giao trước 12h",
                 "COD",
+                null, // paymentStatus (tuan 7): don COD khong co giao dich online
                 items,
                 BigDecimal.valueOf(100000),
                 BigDecimal.valueOf(15000),

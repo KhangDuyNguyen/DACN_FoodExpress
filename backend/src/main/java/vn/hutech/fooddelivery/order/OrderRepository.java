@@ -389,6 +389,27 @@ public class OrderRepository {
         return count != null && count > 0;
     }
 
+    /**
+     * Tinh trang thanh toan online cua don (tuan 7), gop giao dich va yeu cau hoan tien moi nhat:
+     * da tra ma dang cho hoan -> REFUNDING; da tra ma VNPay tu choi hoan -> REFUND_FAILED; con lai lay trang thai
+     * giao dich (PENDING, SUCCESS, FAILED, REFUNDED). Don COD khong co giao dich -> rong.
+     */
+    public Optional<String> findPaymentStatus(long orderId) {
+        String sql = """
+                SELECT CASE
+                         WHEN p.status = 'SUCCESS' AND r.status = 'PENDING' THEN 'REFUNDING'
+                         WHEN p.status = 'SUCCESS' AND r.status = 'REJECTED' THEN 'REFUND_FAILED'
+                         ELSE p.status
+                       END
+                FROM payments p
+                LEFT JOIN refunds r ON r.payment_id = p.id
+                WHERE p.order_id = :orderId
+                ORDER BY p.id DESC, r.id DESC
+                LIMIT 1
+                """;
+        return jdbc.queryForList(sql, Map.of("orderId", orderId), String.class).stream().findFirst();
+    }
+
     /** Kiểm tra nhà hàng có tồn tại trong hệ thống không. */
     public boolean restaurantExists(long restaurantId) {
         String sql = "SELECT COUNT(*) FROM restaurants WHERE id = :restaurantId";
