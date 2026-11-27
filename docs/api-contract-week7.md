@@ -36,6 +36,14 @@ Web:
 
 Test: thiếu nhóm bắt buộc → 400; chọn quá `max_select` → 400; tùy chọn của món khác → 400; giá dòng = giá món + tùy chọn; cùng bộ tùy chọn thì cộng dồn, khác thì tách dòng; đặt hàng lưu `order_item_options` và chi tiết đơn có tùy chọn; tùy chọn ngừng bán → đặt hàng 409.
 
+### Kết quả Module M (27/11)
+
+- Backend: `OptionRules` (luật chọn, unit test 8 ca), `CartOptionsIntegrationTest` (6 ca, viết trước và chạy đỏ trước khi code). Toàn bộ backend 1075/1075 test xanh.
+- Web: `OptionPicker` (radio cho nhóm bắt buộc chọn 1, checkbox cho nhóm chọn nhiều, tùy chọn hết thì khóa, giá cộng dồn trên nút). `npm run build` không lỗi. Đã thử trên app thật: chọn "Thêm cơm" + "Trứng ốp la" → trang thanh toán hiện đúng tùy chọn và giá.
+- Cần nhắn bạn khác:
+  - **Dưỡng**: (1) `RestaurantDetail.tsx` sửa tối thiểu: món có nhóm tùy chọn thì mở hộp chọn. (2) **Lỗi có sẵn trên `main`**: `MerchantMenuRepository.isOwner` (dòng 33) dùng `m.user_id`, bảng `merchants` không có cột này (cột đúng là `owner_user_id`) → mọi API quản lý menu của chủ quán (`/api/merchant/restaurants/{id}/...`) trả 500, chủ quán không tạo được nhóm tùy chọn. (3) Seed chưa có tùy chọn nào: nên thêm dữ liệu mẫu tùy chọn cho demo.
+  - **Điệp**: `MerchantOrdersPage.tsx` sửa tối thiểu: hiện tùy chọn dưới tên món, sửa `key` của danh sách món (1 món có thể nằm ở nhiều dòng). Nút "+ Thêm" ở khối "Gợi ý cho bạn" thêm món không kèm tùy chọn: món có nhóm bắt buộc sẽ báo lỗi "Vui lòng chọn…", nên chuyển khách sang trang quán (`highlightItem`) để chọn.
+
 ## Module N. Hoàn tiền VNPay
 
 `TODO(khang)` từ tuần 5–6: đơn đã trả tiền VNPay mà bị hủy (khách hủy lúc chờ xác nhận, quán hủy, hoặc tiền về sau khi đơn đã hủy) thì phải trả lại tiền. Dùng bảng `refunds` có sẵn và API hoàn tiền của VNPay (`vnp_Command=refund`, cùng địa chỉ với `querydr`; thứ tự trường trong chuỗi ký theo tài liệu đã đọc ở tuần 5).
