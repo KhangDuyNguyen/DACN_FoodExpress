@@ -49,6 +49,18 @@ export interface MerchantOrderSummary extends OrderSummary {
   items: OrderItem[]
 }
 
+// Tinh trang thanh toan online, server tinh tu giao dich + yeu cau hoan tien (tuan 7). Don COD = null.
+export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDING' | 'REFUNDED' | 'REFUND_FAILED'
+
+export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+  PENDING: 'chưa thanh toán',
+  SUCCESS: 'đã thanh toán',
+  FAILED: 'thanh toán không thành công',
+  REFUNDING: 'đang hoàn tiền',
+  REFUNDED: 'đã hoàn tiền',
+  REFUND_FAILED: 'hoàn tiền không thành công, vui lòng liên hệ hỗ trợ',
+}
+
 // Tai xe da nhan don (null khi chua co)
 export interface OrderDriver {
   name: string
@@ -111,6 +123,7 @@ export interface OrderDetail {
   deliveryAddress: string
   note: string | null
   paymentMethod: 'COD' | 'VNPAY' | 'MOMO'
+  paymentStatus: PaymentStatus | null
   items: OrderItem[]
   subtotal: number
   deliveryFee: number
@@ -134,7 +147,7 @@ export interface CreateOrderBody {
   deliveryLng: number
   note?: string
   voucherCode?: string // server tu kiem tra lai va tu tinh so tien giam
-  paymentMethod: 'COD' | 'VNPAY'
+  paymentMethod: 'COD' | 'VNPAY' | 'MOMO'
 }
 
 // Ket qua dat hang: chi tiet don + link sang trang thanh toan VNPay (COD thi null)

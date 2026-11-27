@@ -5,7 +5,7 @@ import type { Dayjs } from 'dayjs'
 import { useState } from 'react'
 import { getApiError } from '../../api/apiError'
 import { fetchAdminOrder, fetchAdminOrders, type AdminOrderSummary } from '../../api/adminOrders'
-import { ORDER_STATUS_LABEL, optionText, statusLabel, type OrderStatus } from '../../api/orders'
+import { ORDER_STATUS_LABEL, optionText, PAYMENT_STATUS_LABEL, statusLabel, type OrderStatus } from '../../api/orders'
 
 // Trang admin don toan san (Khang, tuan 6): loc, tim, xem chi tiet. Chi xem, khong doi trang thai.
 
@@ -172,7 +172,10 @@ export default function AdminOrdersPage() {
               <Descriptions.Item label="Tài xế">
                 {order.driver ? `${order.driver.name} · ${order.driver.phone}` : '—'}
               </Descriptions.Item>
-              <Descriptions.Item label="Thanh toán">{PAYMENT_LABEL[order.paymentMethod]}</Descriptions.Item>
+              <Descriptions.Item label="Thanh toán">
+                {PAYMENT_LABEL[order.paymentMethod]}
+                {order.paymentStatus && ` · ${PAYMENT_STATUS_LABEL[order.paymentStatus]}`}
+              </Descriptions.Item>
               <Descriptions.Item label="Đặt lúc">{formatTime(order.createdAt)}</Descriptions.Item>
             </Descriptions>
             <Table

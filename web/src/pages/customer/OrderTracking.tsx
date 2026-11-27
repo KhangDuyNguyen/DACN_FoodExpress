@@ -6,6 +6,7 @@ import {
   fetchMyOrder,
   isFinished,
   optionText,
+  PAYMENT_STATUS_LABEL,
   statusLabel,
   type OrderDetail,
   type OrderStatus,
@@ -31,11 +32,12 @@ function vnd(amount: number) {
   return `${amount.toLocaleString('vi-VN')}đ`
 }
 
-// Cach thanh toan kem tinh trang tra tien. Don VNPay chi co buoc "Cho xac nhan" (PLACED) khi da tra tien.
+const METHOD_LABEL = { COD: 'COD', VNPAY: 'VNPay', MOMO: 'MoMo' }
+
+// Cach thanh toan kem tinh trang tra tien / hoan tien (server tinh paymentStatus, tuan 7)
 function paymentText(order: OrderDetail): string {
-  if (order.paymentMethod === 'COD') return 'COD'
-  const paid = order.history.some((h) => h.status === 'PLACED')
-  return paid ? 'VNPay · đã thanh toán' : 'VNPay · chưa thanh toán'
+  if (order.paymentMethod === 'COD' || !order.paymentStatus) return 'COD'
+  return `${METHOD_LABEL[order.paymentMethod]} · ${PAYMENT_STATUS_LABEL[order.paymentStatus]}`
 }
 
 export default function OrderTracking() {
@@ -47,8 +49,13 @@ export default function OrderTracking() {
     queryKey: ['order', orderId],
     queryFn: () => fetchMyOrder(orderId),
     enabled: !!orderId,
-    // Don chua xong thi 10 giay tai lai 1 lan de thay quan doi trang thai; xong roi thi thoi
-    refetchInterval: (query) => (isFinished(query.state.data?.status) ? false : 10_000),
+    // Don chua xong thi 10 giay tai lai 1 lan de thay quan doi trang thai; xong roi thi thoi.
+    // Rieng don da huy dang cho hoan tien: 30 giay tai lai 1 lan de thay "da hoan tien" (tac vu gui moi phut)
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (data?.paymentStatus === 'REFUNDING') return 30_000
+      return isFinished(data?.status) ? false : 10_000
+    },
   })
 
   const cancelMutation = useMutation({
@@ -99,9 +106,18 @@ export default function OrderTracking() {
 
         {/* Thanh tien trinh 5 buoc, hoac thong bao da huy / cho thanh toan */}
         {order.status === 'CANCELLED' ? (
-          <p className="mt-4 rounded bg-gray-100 p-3 text-sm text-gray-700">
-            Đơn đã hủy{order.cancelReason ? `: ${order.cancelReason}` : ''}
-          </p>
+          <div className="mt-4 rounded bg-gray-100 p-3 text-sm text-gray-700">
+            <p>Đơn đã hủy{order.cancelReason ? `: ${order.cancelReason}` : ''}</p>
+            {(order.paymentStatus === 'REFUNDING' || order.paymentStatus === 'REFUNDED') && (
+              <p className="mt-1 font-medium text-green-700">
+                Tiền đã thanh toán qua {METHOD_LABEL[order.paymentMethod]}{' '}
+                {order.paymentStatus === 'REFUNDED' ? 'đã được hoàn lại.' : 'đang được hoàn lại.'}
+              </p>
+            )}
+            {order.paymentStatus === 'REFUND_FAILED' && (
+              <p className="mt-1 font-medium text-red-700">Hoàn tiền chưa thành công, vui lòng liên hệ hỗ trợ.</p>
+            )}
+          </div>
         ) : order.status === 'PENDING_PAYMENT' ? (
           <p className="mt-4 rounded bg-yellow-50 p-3 text-sm text-yellow-800">
             Đơn đang chờ thanh toán qua VNPay. Quán chỉ nhận đơn sau khi thanh toán thành công; quá 15 phút chưa
