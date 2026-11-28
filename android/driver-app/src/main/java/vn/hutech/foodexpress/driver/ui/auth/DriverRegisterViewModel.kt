@@ -14,7 +14,7 @@ import vn.hutech.foodexpress.driver.data.auth.DriverRegisterRequest
 import vn.hutech.foodexpress.driver.data.auth.DriverRegisterResult
 
 enum class DriverVehicleType(val label: String) {
-    MOTORBIKE("Xe máy"), BICYCLE("Xe đạp"), CAR("Ô tô"),
+    MOTORBIKE("Xe máy"), CAR("Ô tô"),
 }
 
 data class DriverRegisterForm(
@@ -51,7 +51,7 @@ internal fun DriverRegisterForm.accountErrors(): Map<String, String> = buildMap 
 
 internal fun DriverRegisterForm.vehicleErrors(): Map<String, String> = buildMap {
     if (licensePlate.trim().length > 20) put("licensePlate", "Biển số tối đa 20 ký tự.")
-    else if (vehicleType != DriverVehicleType.BICYCLE && licensePlate.isBlank()) {
+    else if (licensePlate.isBlank()) {
         put("licensePlate", "Vui lòng nhập biển số xe.")
     }
 }

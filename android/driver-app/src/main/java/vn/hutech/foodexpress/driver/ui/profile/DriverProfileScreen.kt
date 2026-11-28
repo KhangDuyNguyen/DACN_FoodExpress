@@ -308,7 +308,7 @@ private fun VehicleForm(
     onCancel: () -> Unit,
 ) {
     Column(Modifier.selectableGroup()) {
-        listOf("MOTORBIKE", "BICYCLE", "CAR").forEach { type ->
+        editableVehicleTypes.forEach { type ->
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     .selectable(selected = state.vehicleType == type, enabled = !state.saving, role = Role.RadioButton,
@@ -323,7 +323,7 @@ private fun VehicleForm(
     state.fieldErrors["vehicleType"]?.let { ProfileMessage(it, false) }
     OutlinedTextField(
         value = state.licensePlate, onValueChange = onPlate, modifier = Modifier.fillMaxWidth(), enabled = !state.saving,
-        label = { Text(if (state.vehicleType == "BICYCLE") "Biển số (không bắt buộc)" else "Biển số xe *") },
+        label = { Text("Biển số xe *") },
         singleLine = true, isError = state.fieldErrors.containsKey("licensePlate"),
         supportingText = { Text(state.fieldErrors["licensePlate"] ?: "Tối đa 20 ký tự. Xe đạp có thể để trống.") },
         shape = RoundedCornerShape(12.dp),

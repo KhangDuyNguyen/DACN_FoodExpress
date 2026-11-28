@@ -79,10 +79,9 @@ fun DriverRegisterScreen(
                         onClick = { onVehicle(type) })
                 }
                 RegisterError(state.fieldErrors["vehicleType"])
-                RegisterField("licensePlate", if (state.form.vehicleType == DriverVehicleType.BICYCLE) "Biển số (không bắt buộc)" else "Biển số xe *",
+                RegisterField("licensePlate", "Biển số xe *",
                     state.form.licensePlate, state, onChange, last = true, onDone = advance)
-                Text(if (state.form.vehicleType == DriverVehicleType.BICYCLE) "Xe đạp được để trống biển số. Nếu nhập, tối đa 20 ký tự."
-                    else "Biển số bắt buộc, tối đa 20 ký tự.", fontSize = 12.sp, color = FoodExpressMuted)
+                Text("Biển số bắt buộc, tối đa 20 ký tự.", fontSize = 12.sp, color = FoodExpressMuted)
                 RegisterInfoRow("!", "Thông tin xét duyệt", "Thông tin phương tiện được sử dụng để xác minh và xét duyệt tài xế.")
             }
             RegisterError(state.message)

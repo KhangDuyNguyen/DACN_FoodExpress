@@ -79,9 +79,7 @@ class RegisterA2WebMvcTest {
     static Stream<Arguments> validDriverVehicles() {
         return Stream.of(
                 Arguments.of("MOTORBIKE", " 59A1-12345 ", "59A1-12345"),
-                Arguments.of("CAR", "51A-12345", "51A-12345"),
-                Arguments.of("BICYCLE", null, null), Arguments.of("BICYCLE", "", null),
-                Arguments.of("BICYCLE", "   ", null)
+                Arguments.of("CAR", "51A-12345", "51A-12345")
         );
     }
 
@@ -91,7 +89,8 @@ class RegisterA2WebMvcTest {
             "\"vehicleType\":\"MOTORBIKE\",\"licensePlate\":null",
             "\"vehicleType\":\"CAR\",\"licensePlate\":\"   \"",
             "\"vehicleType\":\"MOTORBIKE\",\"licensePlate\":\"\"",
-            "\"vehicleType\":\"BICYCLE\",\"licensePlate\":\"123456789012345678901\""})
+            "\"vehicleType\":\"BICYCLE\"", "\"vehicleType\":\"BICYCLE\",\"licensePlate\":\"51A-12345\"",
+            "\"vehicleType\":\"CAR\",\"licensePlate\":\"123456789012345678901\""})
     void invalidDriverVehicleIsRejectedBeforeService(String vehicleFields) throws Exception {
         String base = mapper.writeValueAsString(account("DRIVER"));
         String body = base.substring(0, base.length() - 1) + (vehicleFields.isEmpty() ? "" : "," + vehicleFields) + "}";
@@ -121,7 +120,8 @@ class RegisterA2WebMvcTest {
     @MethodSource("invalidAccounts")
     void oldAccountValidationAndAdminRejectionRemainEffective(String field, Object value) throws Exception {
         var body = account("DRIVER");
-        body.put("vehicleType", "BICYCLE");
+        body.put("vehicleType", "MOTORBIKE");
+        body.put("licensePlate", "59A1-12345");
         body.put(field, value);
 
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
@@ -138,9 +138,10 @@ class RegisterA2WebMvcTest {
     }
 
     @Test
-    void omittedOptionalEmailAndBicyclePlateAreAccepted() throws Exception {
+    void omittedOptionalEmailIsAcceptedForDriver() throws Exception {
         var body = account("DRIVER");
-        body.put("vehicleType", "BICYCLE");
+        body.put("vehicleType", "MOTORBIKE");
+        body.put("licensePlate", "59A1-12345");
         givenSuccess("DRIVER");
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(body)))

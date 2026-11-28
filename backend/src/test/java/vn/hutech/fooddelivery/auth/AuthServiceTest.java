@@ -106,9 +106,9 @@ class AuthServiceTest {
 
     // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - TEST NGHIỆP VỤ =====
     @ParameterizedTest
-    @ValueSource(strings = {"MOTORBIKE", "BICYCLE", "CAR"})
+    @ValueSource(strings = {"MOTORBIKE", "CAR"})
     void driverRegistrationCreatesProfileAfterUserAndBeforeJwt(String vehicleType) {
-        String plate = "BICYCLE".equals(vehicleType) ? null : "59A1-12345";
+        String plate = "59A1-12345";
         when(passwordEncoder.encode("matkhau123")).thenReturn("encoded-hash");
         when(userRepository.insert("Nguyen Van An", "0911111111", null, "encoded-hash", "DRIVER")).thenReturn(7L);
         when(userRepository.findById(7)).thenReturn(Optional.of(new UserRow(7, "Nguyen Van An", null,
@@ -125,6 +125,13 @@ class AuthServiceTest {
         order.verify(driverRepository).insert(7, vehicleType, plate);
         order.verify(userRepository).findById(7);
         order.verify(jwtService).generateToken(7, "DRIVER");
+    }
+
+    @Test
+    void directDriverRegistrationRejectsBicycleBeforeAnyWrite() {
+        assertThrows(IllegalArgumentException.class, () -> authService.register(new RegisterRequest(
+                "Driver Test", "0911111111", null, "test-password", "DRIVER", "BICYCLE", null)));
+        verifyNoInteractions(userRepository, driverRepository, passwordEncoder, jwtService);
     }
 
     @ParameterizedTest
@@ -145,7 +152,7 @@ class AuthServiceTest {
         when(userRepository.findByEmail("an@example.com")).thenReturn(Optional.of(user("ACTIVE")));
 
         assertThrows(ConflictException.class, () -> authService.register(new RegisterRequest("Nguyen Van An",
-                "0911111111", "AN@example.com", "matkhau123", "DRIVER", "BICYCLE", null)));
+                "0911111111", "AN@example.com", "matkhau123", "DRIVER", "CAR", "51A-12345")));
         verify(userRepository, never()).insert(anyString(), anyString(), nullable(String.class), anyString(), anyString());
         verifyNoInteractions(driverRepository, passwordEncoder, jwtService);
     }
@@ -155,10 +162,10 @@ class AuthServiceTest {
         when(passwordEncoder.encode("matkhau123")).thenReturn("encoded-hash");
         when(userRepository.insert("Nguyen Van An", "0911111111", null, "encoded-hash", "DRIVER")).thenReturn(7L);
         doThrow(new DataIntegrityViolationException("driver insert failed"))
-                .when(driverRepository).insert(eq(7L), eq("BICYCLE"), nullable(String.class));
+                .when(driverRepository).insert(eq(7L), eq("CAR"), eq("51A-12345"));
 
         assertThrows(DataIntegrityViolationException.class, () -> authService.register(new RegisterRequest(
-                "Nguyen Van An", "0911111111", null, "matkhau123", "DRIVER", "BICYCLE", null)));
+                "Nguyen Van An", "0911111111", null, "matkhau123", "DRIVER", "CAR", "51A-12345")));
         verifyNoInteractions(jwtService);
         verify(userRepository, never()).findById(anyLong());
     }

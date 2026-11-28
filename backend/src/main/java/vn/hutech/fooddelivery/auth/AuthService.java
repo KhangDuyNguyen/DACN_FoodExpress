@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.hutech.fooddelivery.auth.dto.AuthResponse;
 import vn.hutech.fooddelivery.auth.dto.LoginRequest;
 import vn.hutech.fooddelivery.auth.dto.RegisterRequest;
+import vn.hutech.fooddelivery.common.BadRequestException;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
@@ -60,6 +61,9 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest req) {
+        if (!req.isDriverVehicleTypeValid()) {
+            throw new BadRequestException("DRIVER phải chọn vehicleType là MOTORBIKE hoặc CAR");
+        }
         String phone = req.phone().trim();
         String email = normalizeEmail(req.email());
 
