@@ -27,20 +27,20 @@ class DeviceTokenController {
     @PostMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void register(@AuthenticationPrincipal AuthUser user, @RequestBody @Valid DeviceTokenRequest request) {
-        requireCustomer(user);
+        requireAndroidPushRole(user);
         tokens.registerAndroid(user.id(), request.token());
     }
 
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void remove(@AuthenticationPrincipal AuthUser user, @RequestBody @Valid DeviceTokenRequest request) {
-        requireCustomer(user);
+        requireAndroidPushRole(user);
         tokens.remove(user.id(), request.token());
     }
 
-    private static void requireCustomer(AuthUser user) {
-        if (user == null || !"CUSTOMER".equals(user.role())) {
-            throw new ForbiddenException("Chỉ khách hàng được đăng ký thiết bị nhận thông báo đơn hàng");
+    private static void requireAndroidPushRole(AuthUser user) {
+        if (user == null || !("CUSTOMER".equals(user.role()) || "DRIVER".equals(user.role()))) {
+            throw new ForbiddenException("Chỉ khách hàng và tài xế được đăng ký thiết bị Android");
         }
     }
 

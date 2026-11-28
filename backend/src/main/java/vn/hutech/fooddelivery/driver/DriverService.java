@@ -6,6 +6,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
+import vn.hutech.fooddelivery.common.BadRequestException;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
@@ -58,6 +59,9 @@ public class DriverService {
         DriverProfileResponse profile = getProfile(userId);
         if (!"PENDING".equals(profile.status())) {
             throw new ForbiddenException("Chỉ tài xế PENDING được cập nhật thông tin phương tiện");
+        }
+        if ("BICYCLE".equals(request.vehicleType())) {
+            throw new BadRequestException("Vui lòng chọn xe máy hoặc ô tô để cập nhật phương tiện");
         }
         int updated = driverRepository.updatePendingProfile(userId, request.vehicleType(), request.licensePlate());
         if (updated == 0) {

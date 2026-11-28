@@ -55,17 +55,40 @@ class DriverProfileIntegrationTest {
         JsonNode auth = registration.getBody();
         assertNotNull(auth);
         long userId = auth.path("user").path("id").asLong();
+        jdbc.update("UPDATE drivers SET vehicle_type = 'BICYCLE', license_plate = NULL WHERE user_id = :userId",
+                Map.of("userId", userId));
         var headers = new HttpHeaders();
         headers.setBearerAuth(auth.path("token").asText());
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        var put = rest.exchange("/api/driver/profile", HttpMethod.PUT,
+        var legacy = rest.exchange("/api/driver/profile", HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
+        assertEquals(HttpStatus.OK, legacy.getStatusCode());
+        assertNotNull(legacy.getBody());
+        assertEquals("BICYCLE", legacy.getBody().path("vehicleType").asText());
+        assertTrue(legacy.getBody().path("licensePlate").isNull());
+
+        var rejectedBicycle = rest.exchange("/api/driver/profile", HttpMethod.PUT,
                 new HttpEntity<>("{\"vehicleType\":\"BICYCLE\"}", headers), JsonNode.class);
+        assertEquals(HttpStatus.BAD_REQUEST, rejectedBicycle.getStatusCode());
+        var invalidVehicle = rest.exchange("/api/driver/profile", HttpMethod.PUT,
+                new HttpEntity<>("{\"vehicleType\":\"TRUCK\"}", headers), JsonNode.class);
+        assertEquals(HttpStatus.BAD_REQUEST, invalidVehicle.getStatusCode());
+        assertEquals(legacy.getBody(), rest.exchange("/api/driver/profile", HttpMethod.GET,
+                new HttpEntity<>(headers), JsonNode.class).getBody());
+
+        var car = rest.exchange("/api/driver/profile", HttpMethod.PUT,
+                new HttpEntity<>("{\"vehicleType\":\"CAR\",\"licensePlate\":\"51A-12345\"}", headers), JsonNode.class);
+        assertEquals(HttpStatus.OK, car.getStatusCode());
+        assertNotNull(car.getBody());
+        assertEquals("CAR", car.getBody().path("vehicleType").asText());
+
+        var put = rest.exchange("/api/driver/profile", HttpMethod.PUT,
+                new HttpEntity<>("{\"vehicleType\":\"MOTORBIKE\",\"licensePlate\":\"59A1-12345\"}", headers), JsonNode.class);
         assertEquals(HttpStatus.OK, put.getStatusCode());
         JsonNode profile = put.getBody();
         assertNotNull(profile);
-        assertEquals("BICYCLE", profile.path("vehicleType").asText());
-        assertTrue(profile.path("licensePlate").isNull());
+        assertEquals("MOTORBIKE", profile.path("vehicleType").asText());
+        assertEquals("59A1-12345", profile.path("licensePlate").asText());
         assertEquals("PENDING", profile.path("status").asText());
         assertFalse(profile.path("isOnline").asBoolean());
         assertFalse(profile.has("passwordHash"));
@@ -89,7 +112,7 @@ class DriverProfileIntegrationTest {
         var after = rest.exchange("/api/driver/profile", HttpMethod.GET,
                 new HttpEntity<>(headers), JsonNode.class).getBody();
         assertNotNull(after);
-        assertEquals("BICYCLE", after.path("vehicleType").asText());
+        assertEquals("MOTORBIKE", after.path("vehicleType").asText());
         assertEquals("APPROVED", after.path("status").asText());
     }
 

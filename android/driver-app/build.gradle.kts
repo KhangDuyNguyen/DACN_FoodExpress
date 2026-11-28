@@ -6,6 +6,13 @@ plugins {
     alias(libs.plugins.kotlin.kapt)
 }
 
+val driverFirebase = mapOf(
+    "google_app_id" to "FIREBASE_DRIVER_APP_ID",
+    "google_api_key" to "FIREBASE_DRIVER_API_KEY",
+    "project_id" to "FIREBASE_DRIVER_PROJECT_ID",
+    "gcm_defaultSenderId" to "FIREBASE_DRIVER_SENDER_ID",
+).mapValues { (_, name) -> providers.environmentVariable(name).orElse("").get().trim() }
+
 android {
     namespace = "vn.hutech.foodexpress.driver"
     compileSdk = 36
@@ -17,6 +24,9 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "vn.hutech.foodexpress.driver.offer.OfferUiInstrumentation"
+        if (driverFirebase.values.all { it.isNotEmpty() }) {
+            driverFirebase.forEach { (resource, value) -> resValue("string", resource, value) }
+        }
     }
 
     compileOptions {
@@ -49,4 +59,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.hilt.android)
     kapt(libs.hilt.compiler)
+    implementation("com.google.firebase:firebase-messaging:25.0.2")
+    testImplementation("junit:junit:4.13.2")
 }

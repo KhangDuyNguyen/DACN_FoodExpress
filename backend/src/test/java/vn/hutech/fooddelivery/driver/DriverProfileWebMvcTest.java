@@ -167,33 +167,43 @@ class DriverProfileWebMvcTest {
         when(driverRepository.findProfileByUserId(42)).thenReturn(Optional.of(before), Optional.of(after));
         when(driverRepository.updatePendingProfile(42, vehicleType, licensePlate)).thenReturn(1);
 
-        var result = mockMvc.perform(put("/api/driver/profile")
+        mockMvc.perform(put("/api/driver/profile")
                         .param("userId", "999").param("driverId", "999")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", aMapWithSize(7)))
                 .andExpect(jsonPath("$.vehicleType").value(vehicleType))
+                .andExpect(jsonPath("$.licensePlate").value(licensePlate))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.isOnline").value(false))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
-        if (licensePlate == null) {
-            result.andExpect(jsonPath("$.licensePlate").value(nullValue()));
-        } else {
-            result.andExpect(jsonPath("$.licensePlate").value(licensePlate));
-        }
         verify(driverRepository).updatePendingProfile(42, vehicleType, licensePlate);
     }
 
     static Stream<Arguments> validUpdates() {
         return Stream.of(
-                Arguments.of("{\"vehicleType\":\"BICYCLE\"}", "BICYCLE", null),
-                Arguments.of("{\"vehicleType\":\"BICYCLE\",\"licensePlate\":null}", "BICYCLE", null),
-                Arguments.of("{\"vehicleType\":\"BICYCLE\",\"licensePlate\":\"  \"}", "BICYCLE", null),
                 Arguments.of("{\"vehicleType\":\"MOTORBIKE\",\"licensePlate\":\" 59A1-12345 \"}",
                         "MOTORBIKE", "59A1-12345"),
                 Arguments.of("{\"vehicleType\":\"CAR\",\"licensePlate\":\"51A-12345\"}", "CAR", "51A-12345")
         );
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"vehicleType\":\"BICYCLE\"}",
+            "{\"vehicleType\":\"BICYCLE\",\"licensePlate\":null}",
+            "{\"vehicleType\":\"BICYCLE\",\"licensePlate\":\"  \"}"})
+    void pendingDriverCannotSaveBicycle(String body) throws Exception {
+        String token = authenticate("DRIVER", "DRIVER", "ACTIVE");
+        when(driverRepository.findProfileByUserId(42)).thenReturn(Optional.of(
+                new DriverProfileResponse("Nguyen Van An", "0911111111", null,
+                        "MOTORBIKE", "59A1-12345", "PENDING", false)));
+
+        mockMvc.perform(put("/api/driver/profile").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+        verify(driverRepository, never()).updatePendingProfile(anyLong(), anyString(), nullable(String.class));
     }
 
     @ParameterizedTest
@@ -299,10 +309,11 @@ class DriverProfileWebMvcTest {
         when(driverRepository.findProfileByUserId(42)).thenReturn(Optional.of(
                 new DriverProfileResponse("Nguyen Van An", "0911111111", null,
                         "MOTORBIKE", "59A1-12345", "PENDING", false)));
-        when(driverRepository.updatePendingProfile(42, "BICYCLE", null)).thenReturn(0);
+        when(driverRepository.updatePendingProfile(42, "CAR", "51A-12345")).thenReturn(0);
 
         mockMvc.perform(put("/api/driver/profile").header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"vehicleType\":\"BICYCLE\"}"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"vehicleType\":\"CAR\",\"licensePlate\":\"51A-12345\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409));
     }

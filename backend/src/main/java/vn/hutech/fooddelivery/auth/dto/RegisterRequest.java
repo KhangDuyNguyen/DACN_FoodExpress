@@ -35,10 +35,10 @@ public record RegisterRequest(
 
         // ===== BẮT ĐẦU BỔ SUNG - AN: REGISTER A2 DRIVER - PHƯƠNG TIỆN =====
         @Schema(description = "Bắt buộc khi role là DRIVER; CUSTOMER/MERCHANT không cần",
-                allowableValues = {"MOTORBIKE", "BICYCLE", "CAR"})
+                allowableValues = {"MOTORBIKE", "CAR"})
         String vehicleType,
 
-        @Schema(description = "DRIVER: tối đa 20 ký tự; MOTORBIKE/CAR bắt buộc, BICYCLE có thể để trống",
+        @Schema(description = "DRIVER: bắt buộc, tối đa 20 ký tự",
                 maxLength = 20)
         String licensePlate
         // ===== KẾT THÚC BỔ SUNG - AN: REGISTER A2 DRIVER - PHƯƠNG TIỆN =====
@@ -56,12 +56,11 @@ public record RegisterRequest(
         this(fullName, phone, email, password, role, null, null);
     }
 
-    @AssertTrue(message = "DRIVER phải chọn vehicleType là MOTORBIKE, BICYCLE hoặc CAR")
+    @AssertTrue(message = "DRIVER phải chọn vehicleType là MOTORBIKE hoặc CAR")
     @JsonIgnore
     @Schema(hidden = true)
     public boolean isDriverVehicleTypeValid() {
-        return !"DRIVER".equals(role) || "MOTORBIKE".equals(vehicleType)
-                || "BICYCLE".equals(vehicleType) || "CAR".equals(vehicleType);
+        return !"DRIVER".equals(role) || "MOTORBIKE".equals(vehicleType) || "CAR".equals(vehicleType);
     }
 
     @AssertTrue(message = "Biển số tối đa 20 ký tự và bắt buộc với MOTORBIKE/CAR")

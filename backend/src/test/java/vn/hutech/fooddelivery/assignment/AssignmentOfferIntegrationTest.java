@@ -7,6 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -87,8 +88,8 @@ class AssignmentOfferIntegrationTest {
         @Bean TestClock testClock() { return new TestClock(); }
 
         @Bean
-        OfferCreationService offerCreationService(AssignmentOfferRepository offers, TestClock clock) {
-            return new OfferCreationService(offers, clock);
+        OfferCreationService offerCreationService(AssignmentOfferRepository offers, TestClock clock, ApplicationEventPublisher events) {
+            return new OfferCreationService(offers, clock, events);
         }
 
         @Bean

@@ -36,10 +36,12 @@ fun DriverSessionScreen(
     orderRefreshing: Boolean = false,
     onOrders: (() -> Unit)? = null,
     onEarnings: (() -> Unit)? = null,
+    unreadNotifications: Int? = null,
+    onNotifications: (() -> Unit)? = null,
 ) {
     if (state.phase == DriverAuthPhase.AUTHENTICATED) {
         DriverDashboardScreen(dashboardState, onDashboardRetry, onReceivingOrders, onProfile, onLogout, onGpsRetry,
-            offerContent, currentOrderContent, orderRefreshing, onOrders, onEarnings)
+            offerContent, currentOrderContent, orderRefreshing, onOrders, onEarnings, unreadNotifications, onNotifications)
         return
     }
     Column(

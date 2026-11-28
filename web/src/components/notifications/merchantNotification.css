@@ -1,0 +1,8 @@
+.merchant-notification :is(.text-orange-600, .text-orange-700) { color: #0958d9; }
+.merchant-notification :is(.border-orange-200, .border-orange-300) { border-color: #91caff; }
+.merchant-notification .border-orange-600 { border-color: #1677ff; }
+.merchant-notification .bg-orange-600 { background-color: #1677ff; }
+.merchant-notification .bg-orange-100 { background-color: #dbeafe; }
+.merchant-notification .bg-orange-50,
+.merchant-notification :is(.hover\:bg-orange-50, .hover\:bg-orange-100\/70):hover { background-color: #edf5ff; }
+.merchant-notification { line-height: 1.4; }

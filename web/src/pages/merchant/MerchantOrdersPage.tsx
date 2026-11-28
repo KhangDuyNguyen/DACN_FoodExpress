@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import { isAxiosError } from 'axios'
+import { invalidateMerchantOrders, merchantOrderKeys, type MerchantOrderScope } from './merchantOrderQueries'
+import React, { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   Alert,
   Button,
@@ -33,6 +35,8 @@ import {
 } from '../../api/merchantOrders'
 import { statusLabel, type MerchantOrderSummary, type OrderStatus } from '../../api/orders'
 import type { PageResponse } from '../../api/page'
+import { useAuth } from '../../auth/useAuth'
+import { useNotificationCenter } from '../../components/notifications/NotificationContext'
 
 // Man hinh nhan don va doi trang thai voi cap nhat thoi gian thuc qua WebSocket STOMP
 const { Title, Text } = Typography
@@ -103,7 +107,46 @@ function getWsUrl(): string {
 type ConnectionStatus = 'Online' | 'Connecting' | 'Offline'
 
 export const MerchantOrdersPage: React.FC = () => {
+  const center = useNotificationCenter()
+  const { user, token } = useAuth()
+  const session = center?.merchantSession
+  if (!center?.valid || !session || user?.id !== session.scope[1] || !token || !session.current()) return null
+  return <MerchantOrdersSession key={session.scope[2]} scope={session.scope} />
+}
+
+const MerchantOrdersSession: React.FC<{ scope: MerchantOrderScope }> = ({ scope }) => {
   const queryClient = useQueryClient()
+  const { user, token } = useAuth()
+  const userId = user?.role === 'MERCHANT' ? user.id : undefined
+  const notificationCenter = useNotificationCenter()
+  const session = notificationCenter!.merchantSession!
+  const requestSession = { token: token!, current: session.current }
+  const [available, setAvailable] = useState(() => document.visibilityState === 'visible' && navigator.onLine)
+  async function readCurrent<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    try { return await work() }
+    catch (error) {
+      if (!signal.aborted && session.current() && isAxiosError(error)) {
+        const status = error.response?.status
+        if (status === 401 || status === 403) session.reject(status)
+      }
+      throw error
+    }
+  }
+  useEffect(() => {
+    function update() {
+      const ready = document.visibilityState === 'visible' && navigator.onLine
+      setAvailable(ready)
+      if (!ready) void queryClient.cancelQueries({ queryKey: scope })
+    }
+    document.addEventListener('visibilitychange', update)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      document.removeEventListener('visibilitychange', update)
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [queryClient, scope])
   const [restaurantId, setRestaurantId] = useState<number | undefined>()
   const [tab, setTab] = useState<OrderStatus | 'ALL'>('PLACED')
   const [page, setPage] = useState(0)
@@ -112,13 +155,16 @@ export const MerchantOrdersPage: React.FC = () => {
   const [cancelReason, setCancelReason] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('Connecting')
 
-  const clientRef = useRef<Client | null>(null)
-  const subscriptionsRef = useRef<StompSubscription[]>([])
+  const syncRooms = useRef<(() => void) | null>(null)
   const processedOrderIdsRef = useRef<Set<string | number>>(new Set())
 
   const restaurantIdRef = useRef<number | undefined>(restaurantId)
   const queryClientRef = useRef(queryClient)
-  const { data: restaurants = [] } = useQuery({ queryKey: ['merchant-restaurants'], queryFn: fetchMyRestaurants })
+  const { data: restaurants = [] } = useQuery({
+    queryKey: merchantOrderKeys.restaurants(scope),
+    queryFn: ({ signal }) => readCurrent(() => fetchMyRestaurants(signal, requestSession), signal),
+    enabled: available && session.current(), retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false,
+  })
   const restaurantsRef = useRef(restaurants)
 
   useEffect(() => {
@@ -134,34 +180,45 @@ export const MerchantOrdersPage: React.FC = () => {
   }, [restaurants])
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
-    queryKey: ['merchant-orders', restaurantId, tab, page],
-    queryFn: () =>
-      fetchMerchantOrders({ restaurantId, status: tab === 'ALL' ? undefined : tab, page, size: PAGE_SIZE }),
+    queryKey: merchantOrderKeys.list(scope, restaurantId, tab, page),
+    queryFn: ({ signal }) => readCurrent(() =>
+      fetchMerchantOrders({ restaurantId, status: tab === 'ALL' ? undefined : tab, page, size: PAGE_SIZE }, signal, requestSession), signal),
+    enabled: available && session.current(), retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false,
     placeholderData: keepPreviousData,
-    refetchInterval: connectionStatus === 'Online' ? false : 15_000,
+    refetchInterval: available && session.current() ? 15_000 : false,
   })
 
   const { data: detail, isLoading: loadingDetail } = useQuery({
-    queryKey: ['merchant-order', detailId],
-    queryFn: () => fetchMerchantOrder(detailId as number),
-    enabled: detailId !== null,
+    queryKey: merchantOrderKeys.detail(scope, detailId),
+    queryFn: ({ signal }) => readCurrent(() => fetchMerchantOrder(detailId as number, signal, requestSession), signal),
+    enabled: detailId !== null && available && session.current(),
+    refetchInterval: available && session.current() ? 15_000 : false,
+    retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false,
   })
 
   const statusMutation = useMutation({
     mutationFn: (vars: { id: number; status: OrderStatus; reason?: string }) =>
-      changeOrderStatus(vars.id, { status: vars.status, reason: vars.reason }),
+      changeOrderStatus(vars.id, { status: vars.status, reason: vars.reason }, requestSession),
     onSuccess: (order) => {
+      if (!session.current()) return
       message.success(`Đơn ${order.code}: ${statusLabel(order.status)}`)
-      queryClient.invalidateQueries({ queryKey: ['merchant-orders'] })
-      queryClient.setQueryData(['merchant-order', order.id], order)
+      void invalidateMerchantOrders(queryClient, scope)
+      queryClient.setQueryData(merchantOrderKeys.detail(scope, order.id), order)
       setCancelTarget(null)
       setCancelReason('')
     },
-    onError: (error) => message.error(errorText(error)),
+    onError: (error) => {
+      if (!session.current()) return
+      if (isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+        session.reject(error.response.status)
+        return
+      }
+      message.error(errorText(error))
+    },
   })
 
   // Xu ly su kien don hang moi tu WebSocket STOMP
-  const handleIncomingOrder = (msg: IMessage) => {
+  const handleIncomingOrder = useEffectEvent((msg: IMessage, current: () => boolean, popupKeys: Set<string>) => {
     try {
       let orderData: any
       try {
@@ -194,7 +251,7 @@ export const MerchantOrdersPage: React.FC = () => {
         if (matchesFilter) {
           (['PLACED', 'ALL'] as const).forEach((targetTab) => {
             queryClientRef.current.setQueryData<PageResponse<MerchantOrderSummary>>(
-              ['merchant-orders', currentFilterRestaurantId, targetTab, 0],
+              merchantOrderKeys.list(scope, currentFilterRestaurantId, targetTab, 0),
               (old) => {
                 if (!old) return old
                 if (old.items.some((item) => item.id === incomingOrder.id)) {
@@ -217,16 +274,22 @@ export const MerchantOrdersPage: React.FC = () => {
       const restaurantName = rawRestaurantName ? ` tại ${rawRestaurantName}` : ''
       const amountStr = orderData?.totalAmount ? ` (${vnd(Number(orderData.totalAmount))})` : ''
 
+      if (!notificationCenter || notificationCenter.allowOrderPopup(orderKey)) {
+      const key = 'merchant-order-' + String(orderKey ?? crypto.getRandomValues(new Uint32Array(1))[0])
+      popupKeys.add(key)
       notification.info({
+        key,
         message: '🔔 Có đơn hàng mới!',
         description: `${orderCode}${restaurantName}${amountStr} vừa được đặt thành công. Danh sách đơn đã được cập nhật.`,
         placement: 'topRight',
         duration: 6,
+        onClose: () => popupKeys.delete(key),
         btn: (
           <Button
             type="primary"
             size="small"
             onClick={() => {
+              if (!current()) return
               if (
                 currentFilterRestaurantId !== undefined &&
                 typeof incomingRestaurantId === 'number' &&
@@ -236,119 +299,106 @@ export const MerchantOrdersPage: React.FC = () => {
               }
               setTab('PLACED')
               setPage(0)
-              queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
-              notification.destroy()
+              invalidateMerchantOrders(queryClientRef.current, scope)
+              notification.destroy(key)
             }}
           >
             Xem ngay
           </Button>
         ),
       })
+      }
 
       // Invalidate queries de dong bo tong so don va phan trang voi backend
-      queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
-    } catch (err) {
-      console.error('Lỗi xử lý sự kiện đơn hàng WebSocket:', err)
+      invalidateMerchantOrders(queryClientRef.current, scope)
+    } catch {
+      console.error('Lỗi xử lý sự kiện đơn hàng WebSocket')
     }
-  }
+  })
 
-  // Dang ky subscription theo chi nhanh dang chon hoac tat ca chi nhanh so huu
-  const updateSubscriptions = () => {
-    // Huy cac subscription cu
-    subscriptionsRef.current.forEach((sub) => {
-      try {
-        sub.unsubscribe()
-      } catch (e) {
-        console.warn('Lỗi khi hủy subscription STOMP:', e)
-      }
-    })
-    subscriptionsRef.current = []
-
-    const client = clientRef.current
-    if (!client || !client.connected) {
-      return
-    }
-
-    const currentRestaurantId = restaurantIdRef.current
-    const currentRestaurants = restaurantsRef.current
-
-    const targetIds: number[] = []
-    if (currentRestaurantId !== undefined) {
-      targetIds.push(currentRestaurantId)
-    } else if (currentRestaurants && currentRestaurants.length > 0) {
-      currentRestaurants.forEach((r) => targetIds.push(r.id))
-    }
-
-    targetIds.forEach((id) => {
-      const topic = `/topic/restaurants/${id}/orders`
-      try {
-        const sub = client.subscribe(topic, (msg: IMessage) => {
-          handleIncomingOrder(msg)
-        })
-        subscriptionsRef.current.push(sub)
-      } catch (err) {
-        console.error(`Không thể subscribe topic ${topic}:`, err)
-      }
-    })
-  }
-
-  // Khoi tao WebSocket STOMP Client
   useEffect(() => {
-    const token = localStorage.getItem('token')
+    if (!token || userId === undefined || localStorage.getItem('token') !== token) return
+    let active = true
+    const rooms = new Map<number, StompSubscription>()
+    const popupKeys = new Set<string>()
+    const current = () => active && localStorage.getItem('token') === token
     const client = new Client({
       brokerURL: getWsUrl(),
-      connectHeaders: token ? { Authorization: `Bearer ${token}` } : {},
+      connectHeaders: { Authorization: `Bearer ${token}` },
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
       beforeConnect: () => {
+        if (!current()) { stop(); return }
         setConnectionStatus('Connecting')
-        const currentToken = localStorage.getItem('token')
-        if (currentToken) {
-          client.connectHeaders = { Authorization: `Bearer ${currentToken}` }
-        }
       },
       onConnect: () => {
+        if (!current()) { stop(); return }
         setConnectionStatus('Online')
-        // Dong bo du lieu khi ket noi / ket noi lai
-        queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
-        updateSubscriptions()
-      },
-      onDisconnect: () => {
-        setConnectionStatus('Offline')
+        void invalidateMerchantOrders(queryClientRef.current, scope)
+        subscribe()
       },
       onWebSocketClose: () => {
-        setConnectionStatus('Offline')
+        rooms.clear()
+        if (current()) setConnectionStatus('Offline')
       },
-      onStompError: (frame) => {
-        console.warn('Lỗi STOMP:', frame)
-        setConnectionStatus('Offline')
+      onStompError: () => {
+        if (current()) setConnectionStatus('Offline')
+        client.forceDisconnect()
       },
     })
 
-    clientRef.current = client
-    client.activate()
-
-    return () => {
-      subscriptionsRef.current.forEach((sub) => {
-        try {
-          sub.unsubscribe()
-        } catch {
-          // ignore
+    function subscribe() {
+      if (!current() || !client.connected) return
+      const selected = restaurantIdRef.current
+      const targets = new Set(restaurantsRef.current.map(row => row.id).filter(id => selected === undefined || id === selected))
+      for (const [id, subscription] of rooms) {
+        if (!targets.has(id)) {
+          rooms.delete(id)
+          subscription.unsubscribe()
         }
-      })
-      subscriptionsRef.current = []
-      client.deactivate()
-      clientRef.current = null
+      }
+      for (const id of targets) {
+        if (rooms.has(id)) continue
+        const subscription = client.subscribe(`/topic/restaurants/${id}/orders`, msg => {
+          const ownsSubscription = () => current() && rooms.get(id) === subscription
+          if (ownsSubscription()) handleIncomingOrder(msg, ownsSubscription, popupKeys)
+        })
+        rooms.set(id, subscription)
+      }
     }
-  }, [])
 
-  // Khi danh sach quan hoac quan duoc chon thay doi, cap nhat lai subscription
-  useEffect(() => {
-    if (clientRef.current && clientRef.current.connected) {
-      updateSubscriptions()
+    function stop() {
+      if (!active) return
+      active = false
+      clearTimeout(start)
+      window.removeEventListener('storage', storage)
+      if (client.connected) for (const sub of rooms.values()) sub.unsubscribe()
+      rooms.clear()
+      for (const key of popupKeys) notification.destroy(key)
+      popupKeys.clear()
+      processedOrderIdsRef.current.clear()
+      if (syncRooms.current === subscribe) syncRooms.current = null
+      void client.deactivate({ force: true })
     }
-  }, [restaurantId, restaurants])
+
+    function storage(event: StorageEvent) {
+      if ((event.key === 'token' || event.key === null) && !current()) {
+        setConnectionStatus('Offline')
+        stop()
+      }
+    }
+
+    syncRooms.current = subscribe
+    window.addEventListener('storage', storage)
+    const start = setTimeout(() => {
+      if (current()) client.activate()
+      else stop()
+    }, 0)
+    return stop
+  }, [token, userId, scope])
+
+  useEffect(() => { syncRooms.current?.() }, [restaurantId, restaurants])
 
   const columns: ColumnsType<MerchantOrderSummary> = [
     {

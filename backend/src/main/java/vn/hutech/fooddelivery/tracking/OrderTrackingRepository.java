@@ -54,4 +54,45 @@ public class OrderTrackingRepository {
 
     record TrackingOrder(long customerId, OrderTrackingResponse response) {
     }
+
+    Optional<RouteSnapshot> findRouteSnapshot(long orderId, long customerId, boolean withLocation) {
+        String sql = """
+                SELECT o.customer_id, o.status, o.driver_id, d.vehicle_type, o.delivery_lat, o.delivery_lng,
+                       loc.id AS location_id, loc.lat, loc.lng, loc.recorded_at, u.id IS NOT NULL AS allowed
+                FROM orders o
+                LEFT JOIN users u ON u.id = o.customer_id AND u.id = :customerId
+                    AND u.role = 'CUSTOMER' AND u.status NOT IN ('LOCKED', 'DELETED')
+                LEFT JOIN drivers d ON d.id = o.driver_id AND u.id IS NOT NULL
+                LEFT JOIN driver_locations loc ON :withLocation AND loc.id = (
+                    SELECT l.id
+                    FROM driver_locations l
+                    WHERE l.order_id = o.id AND l.driver_id = o.driver_id
+                      AND u.id IS NOT NULL
+                    ORDER BY l.recorded_at DESC, l.id DESC
+                    LIMIT 1
+                )
+                WHERE o.id = :orderId
+                """;
+        return jdbc.query(sql, Map.of("orderId", orderId, "customerId", customerId, "withLocation", withLocation),
+                (rs, rowNum) -> {
+                    long owner = rs.getLong("customer_id");
+                    if (!rs.getBoolean("allowed")) {
+                        return new RouteSnapshot(owner, false, null, null, null, null, null);
+                    }
+                    var locationId = rs.getObject("location_id", Long.class);
+                    var fix = locationId == null ? null : new RouteFix(locationId,
+                            RoutePoint.from(rs.getBigDecimal("lat"), rs.getBigDecimal("lng")),
+                            rs.getObject("recorded_at", LocalDateTime.class));
+                    return new RouteSnapshot(owner, true, rs.getString("status"), rs.getObject("driver_id", Long.class),
+                            rs.getString("vehicle_type"),
+                            RoutePoint.from(rs.getBigDecimal("delivery_lat"), rs.getBigDecimal("delivery_lng")), fix);
+                }).stream().findFirst();
+    }
+
+    record RouteSnapshot(long customerId, boolean allowed, String status, Long driverId, String vehicleType,
+                         RoutePoint destination, RouteFix fix) {
+    }
+
+    record RouteFix(long id, RoutePoint point, LocalDateTime recordedAt) {
+    }
 }

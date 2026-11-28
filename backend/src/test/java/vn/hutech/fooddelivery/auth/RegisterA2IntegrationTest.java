@@ -115,8 +115,7 @@ class RegisterA2IntegrationTest {
 
     static Stream<Arguments> driverVehicles() {
         return Stream.of(Arguments.of("MOTORBIKE", " 59A1-12345 ", "59A1-12345"),
-                Arguments.of("CAR", "51A-12345", "51A-12345"), Arguments.of("BICYCLE", null, null),
-                Arguments.of("BICYCLE", "", null), Arguments.of("BICYCLE", "   ", null));
+                Arguments.of("CAR", "51A-12345", "51A-12345"));
     }
 
     @ParameterizedTest
@@ -135,7 +134,7 @@ class RegisterA2IntegrationTest {
 
     @Test
     void duplicatePhoneReturns409WithoutExtraUserOrDriver() {
-        var request = bicycle();
+        var request = motorbike();
         assertEquals(HttpStatus.CREATED, rest.postForEntity("/api/auth/register", request, JsonNode.class).getStatusCode());
         long usersBefore = count("SELECT COUNT(*) FROM users");
         long driversBefore = count("SELECT COUNT(*) FROM drivers");
@@ -151,11 +150,11 @@ class RegisterA2IntegrationTest {
 
     @Test
     void duplicateEmailRemainsCaseInsensitiveAndDoesNotCreateOrphanUser() {
-        var first = bicycle();
+        var first = motorbike();
         String email = "a2-" + first.get("phone") + "@example.com";
         first.put("email", email);
         assertEquals(HttpStatus.CREATED, rest.postForEntity("/api/auth/register", first, JsonNode.class).getStatusCode());
-        var duplicate = bicycle();
+        var duplicate = motorbike();
         duplicate.put("email", email.toUpperCase());
 
         assertEquals(HttpStatus.CONFLICT, rest.postForEntity("/api/auth/register", duplicate, JsonNode.class).getStatusCode());
@@ -164,7 +163,7 @@ class RegisterA2IntegrationTest {
 
     @Test
     void sqlFailureCreatingDriverRollsBackInsertedUserAndEmail() {
-        var request = bicycle();
+        var request = motorbike();
         String email = "rollback-" + request.get("phone") + "@example.com";
         request.put("email", email);
         long usersBefore = count("SELECT COUNT(*) FROM users");
@@ -191,13 +190,15 @@ class RegisterA2IntegrationTest {
     }
 
     @Test
-    void bcryptAndLoginByPhoneOrEmailRemainCompatibleWithDriverRegistration() {
-        var request = bicycle();
+    void existingBicycleDriverCanStillLogInByPhoneOrEmail() {
+        var request = motorbike();
         String email = "login-" + request.get("phone") + "@example.com";
         request.put("email", email.toUpperCase());
         var registered = rest.postForEntity("/api/auth/register", request, JsonNode.class);
         assertEquals(HttpStatus.CREATED, registered.getStatusCode());
         var user = users.findByPhone((String) request.get("phone")).orElseThrow();
+        jdbc.update("UPDATE drivers SET vehicle_type = 'BICYCLE', license_plate = NULL WHERE user_id = :userId",
+                Map.of("userId", user.id()));
         assertEquals(email, user.email());
         assertTrue(encoder.matches((String) request.get("password"), user.passwordHash()));
 
@@ -208,7 +209,22 @@ class RegisterA2IntegrationTest {
             assertNotNull(result.getBody());
             assertEquals(user.id(), jwt.parse(result.getBody().path("token").asText()).id());
             assertFalse(result.getBody().path("user").has("passwordHash"));
+            var headers = new HttpHeaders();
+            headers.setBearerAuth(result.getBody().path("token").asText());
+            var profile = rest.exchange("/api/driver/profile", HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
+            assertEquals(HttpStatus.OK, profile.getStatusCode());
+            assertEquals("BICYCLE", profile.getBody().path("vehicleType").asText());
         }
+    }
+
+    @Test
+    void bicycleRegistrationReturns400WithoutCreatingUser() {
+        var request = motorbike();
+        request.put("vehicleType", "BICYCLE");
+        var response = rest.postForEntity("/api/auth/register", request, JsonNode.class);
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertTrue(response.getBody().path("fieldErrors").has("driverVehicleTypeValid"));
+        assertTrue(users.findByPhone((String) request.get("phone")).isEmpty());
     }
 
     @Test
@@ -237,9 +253,10 @@ class RegisterA2IntegrationTest {
         assertEquals(8, schemas.path("UserResponse").path("properties").size());
     }
 
-    private Map<String, Object> bicycle() {
+    private Map<String, Object> motorbike() {
         var request = account("DRIVER");
-        request.put("vehicleType", "BICYCLE");
+        request.put("vehicleType", "MOTORBIKE");
+        request.put("licensePlate", "59A1-12345");
         return request;
     }
 

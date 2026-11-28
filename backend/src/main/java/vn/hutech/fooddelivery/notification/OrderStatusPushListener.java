@@ -3,6 +3,7 @@ package vn.hutech.fooddelivery.notification;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -20,12 +21,15 @@ class OrderStatusPushListener {
 
     private final DeviceTokenRepository tokens;
     private final FirebaseCustomerPush push;
+    private final FcmPushSource source;
     private final ExecutorService executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(128), Thread.ofPlatform().daemon().name("order-push").factory());
 
-    OrderStatusPushListener(DeviceTokenRepository tokens, FirebaseCustomerPush push) {
+    OrderStatusPushListener(DeviceTokenRepository tokens, FirebaseCustomerPush push,
+                            @Value("${app.fcm.source:LEGACY}") FcmPushSource source) {
         this.tokens = tokens;
         this.push = push;
+        this.source = source;
     }
 
     @PreDestroy
@@ -35,7 +39,8 @@ class OrderStatusPushListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void afterCommit(OrderStatusChangedEvent event) {
-        if (!push.enabled() || Objects.equals(event.fromStatus(), event.toStatus())) return;
+        if (source != FcmPushSource.LEGACY || !push.enabled()
+                || Objects.equals(event.fromStatus(), event.toStatus())) return;
         try {
             executor.execute(() -> sendToOwner(event.customerId()));
         } catch (RuntimeException e) {
@@ -47,7 +52,9 @@ class OrderStatusPushListener {
         try {
             for (String token : tokens.findActiveCustomerTokens(customerId)) {
                 try {
-                    if (!push.sendOrderUpdate(token)) tokens.remove(customerId, token);
+                    if (tokens.isActiveCustomerBinding(customerId, token) && !push.sendOrderUpdate(token)) {
+                        tokens.remove(customerId, token);
+                    }
                 } catch (Exception e) {
                     LOG.warn("Order push could not be sent ({})", e.getClass().getSimpleName());
                 }

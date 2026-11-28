@@ -1,6 +1,7 @@
 package vn.hutech.fooddelivery.assignment;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
@@ -23,16 +24,20 @@ public class DriverOfferDecisionService {
     private final DriverOfferRepository offers;
     private final AssignmentOfferRepository assignments;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     @Autowired
-    public DriverOfferDecisionService(DriverOfferRepository offers, AssignmentOfferRepository assignments) {
-        this(offers, assignments, Clock.systemDefaultZone());
+    public DriverOfferDecisionService(DriverOfferRepository offers, AssignmentOfferRepository assignments,
+                                      ApplicationEventPublisher events) {
+        this(offers, assignments, Clock.systemDefaultZone(), events);
     }
 
-    DriverOfferDecisionService(DriverOfferRepository offers, AssignmentOfferRepository assignments, Clock clock) {
+    DriverOfferDecisionService(DriverOfferRepository offers, AssignmentOfferRepository assignments, Clock clock,
+                               ApplicationEventPublisher events) {
         this.offers = offers;
         this.assignments = assignments;
         this.clock = clock;
+        this.events = events;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED)
@@ -62,6 +67,8 @@ public class DriverOfferDecisionService {
         LocalDateTime respondedAt = now.truncatedTo(ChronoUnit.SECONDS);
         offers.respond(offer, "ACCEPTED", respondedAt);
         offers.assignOrder(order.id(), offer.driverId());
+        events.publishEvent(new AssignmentOfferEvent(AssignmentOfferEvent.Kind.ACCEPTED, offer.id(), order.id(),
+                order.restaurantId(), offer.driverId(), null));
         return new DriverOfferActionResponse(offer.id(), order.id(), "ACCEPTED", respondedAt);
     }
 

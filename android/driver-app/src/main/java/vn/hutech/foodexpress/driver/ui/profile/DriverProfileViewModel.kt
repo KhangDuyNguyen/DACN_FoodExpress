@@ -12,6 +12,8 @@ import vn.hutech.foodexpress.driver.data.profile.DriverProfile
 import vn.hutech.foodexpress.driver.data.profile.DriverProfileRepository
 import vn.hutech.foodexpress.driver.data.profile.DriverProfileResult
 
+internal val editableVehicleTypes = listOf("MOTORBIKE", "CAR")
+
 data class DriverProfileUiState(
     val profile: DriverProfile? = null,
     val loading: Boolean = false,
@@ -47,7 +49,7 @@ class DriverProfileViewModel @Inject constructor(private val repository: DriverP
         val current = state.value
         if (current.loading || current.saving || current.profile?.status != "PENDING") return
         mutableState.value = current.copy(
-            editing = true, vehicleType = current.profile.vehicleType.orEmpty(),
+            editing = true, vehicleType = current.profile.vehicleType?.takeIf { it in editableVehicleTypes }.orEmpty(),
             licensePlate = current.profile.licensePlate.orEmpty(), fieldErrors = emptyMap(), message = null, saved = false,
         )
     }
@@ -57,7 +59,7 @@ class DriverProfileViewModel @Inject constructor(private val repository: DriverP
     }
 
     fun selectVehicle(type: String) {
-        if (state.value.editing && !state.value.saving) mutableState.value = state.value.copy(
+        if (state.value.editing && !state.value.saving && type in editableVehicleTypes) mutableState.value = state.value.copy(
             vehicleType = type, fieldErrors = emptyMap(), message = null,
         )
     }
@@ -73,9 +75,9 @@ class DriverProfileViewModel @Inject constructor(private val repository: DriverP
         if (request?.isActive == true || !current.editing || current.profile?.status != "PENDING") return
         val plate = current.licensePlate.trim().takeIf { it.isNotEmpty() }
         val errors = buildMap {
-            if (current.vehicleType !in setOf("MOTORBIKE", "BICYCLE", "CAR")) put("vehicleType", "Vui lòng chọn loại xe.")
+            if (current.vehicleType !in editableVehicleTypes) put("vehicleType", "Vui lòng chọn loại xe.")
             if (plate != null && plate.length > 20) put("licensePlate", "Biển số tối đa 20 ký tự.")
-            if (current.vehicleType in setOf("MOTORBIKE", "CAR") && plate == null) put("licensePlate", "Xe máy và ô tô bắt buộc có biển số.")
+            if (current.vehicleType in editableVehicleTypes && plate == null) put("licensePlate", "Xe máy và ô tô bắt buộc có biển số.")
         }
         mutableState.value = current.copy(fieldErrors = errors, message = null, saved = false)
         if (errors.isNotEmpty()) return

@@ -2,6 +2,11 @@ package vn.hutech.foodexpress.driver.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.os.Build
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +64,10 @@ import vn.hutech.foodexpress.driver.ui.onboarding.DriverSplashScreen
 import vn.hutech.foodexpress.driver.ui.onboarding.IncomeOnboardingPage
 import vn.hutech.foodexpress.driver.ui.onboarding.NavigationOnboardingPage
 import vn.hutech.foodexpress.driver.ui.onboarding.OrdersOnboardingPage
+import kotlinx.coroutines.flow.StateFlow
+import vn.hutech.foodexpress.core.notification.InboxScreen
+import vn.hutech.foodexpress.core.notification.InboxSystemNotifications
+import vn.hutech.foodexpress.driver.notification.DriverNotificationViewModel
 
 private const val SPLASH_ROUTE = "splash"
 private const val ONBOARDING_ORDERS_ROUTE = "onboarding-orders"
@@ -67,6 +76,7 @@ private const val ONBOARDING_INCOME_ROUTE = "onboarding-income"
 private const val PERMISSION_INTRO_ROUTE = "permission-intro"
 private const val LOGIN_ROUTE = "login"
 private const val SESSION_ROUTE = "driver-session"
+private const val NOTIFICATIONS_ROUTE = "driver-notifications"
 private const val PROFILE_ROUTE = "driver-profile"
 private const val ORDER_DETAIL_ROUTE = "driver-order-detail"
 private const val EARNINGS_ROUTE = "driver-earnings"
@@ -95,12 +105,17 @@ internal fun confirmedOfflineForCurrentOrder(
     offers.pending == null && offers.acceptedOrderId == null && !offers.sending && !offers.sessionExpired
 
 @Composable
-fun DriverAppNavigation() {
+fun DriverAppNavigation(notificationClick: StateFlow<Long?>? = null, onConsumeClick: () -> Unit = {}) {
     val navController = rememberNavController()
     val context = LocalContext.current
     // Activity owner supplies Hilt's default factory; no extra Hilt Navigation dependency.
     val auth: DriverAuthViewModel = viewModel()
     val state by auth.state.collectAsStateWithLifecycle()
+    val notification: DriverNotificationViewModel = viewModel()
+    val inbox by notification.inbox.state.collectAsStateWithLifecycle()
+    val notice by notification.notice.collectAsStateWithLifecycle()
+    val clickedId = notificationClick?.collectAsStateWithLifecycle()?.value
+    val pushPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val register: DriverRegisterViewModel = viewModel()
     val registration by register.state.collectAsStateWithLifecycle()
     val profile: DriverProfileViewModel = viewModel()
@@ -139,6 +154,7 @@ fun DriverAppNavigation() {
         }
     }
     val logout: () -> Unit = {
+        notification.authenticated(false)
         DriverDeliveryLocationService.stop(context)
         syncDeliveryKnowledge()
         dashboard.clear() // Capture the old owner's policy/JWT before clearing other state.
@@ -172,6 +188,27 @@ fun DriverAppNavigation() {
             orders.setForeground(false)
             reports.setForeground(false)
         }
+    }
+
+    LaunchedEffect(foreground) { notification.foreground(foreground) }
+    DisposableEffect(notification) { onDispose { notification.foreground(false) } }
+    LaunchedEffect(state.phase) { notification.authenticated(state.phase == DriverAuthPhase.AUTHENTICATED) }
+    LaunchedEffect(notification, offers) { notification.offerSignal.collect { offers.refresh() } }
+    LaunchedEffect(notification) {
+        notification.openVerifiedOffer.collect {
+            if (auth.state.value.phase == DriverAuthPhase.AUTHENTICATED) {
+                if (!navController.popBackStack(SESSION_ROUTE, false)) {
+                    navController.navigate(SESSION_ROUTE) { launchSingleTop = true }
+                }
+            }
+        }
+    }
+    LaunchedEffect(clickedId, state.phase) {
+        if (clickedId != null && state.phase == DriverAuthPhase.AUTHENTICATED) {
+            navController.navigate(NOTIFICATIONS_ROUTE) { launchSingleTop = true }
+            notification.tap(clickedId)
+            onConsumeClick()
+        } else if (clickedId != null && state.phase == DriverAuthPhase.SIGNED_OUT) onConsumeClick()
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { auth.onResume() }
@@ -249,7 +286,8 @@ fun DriverAppNavigation() {
     LaunchedEffect(state.phase, currentRoute) {
         val destination = when {
             currentRoute == LOGIN_ROUTE && state.phase == DriverAuthPhase.AUTHENTICATED -> SESSION_ROUTE
-            (currentRoute in setOf(SESSION_ROUTE, PROFILE_ROUTE, ORDER_DETAIL_ROUTE) || currentRoute in REPORT_ROUTES) && state.phase == DriverAuthPhase.SIGNED_OUT -> LOGIN_ROUTE
+            (currentRoute in setOf(SESSION_ROUTE, PROFILE_ROUTE, ORDER_DETAIL_ROUTE, NOTIFICATIONS_ROUTE) || currentRoute in REPORT_ROUTES) &&
+                state.phase == DriverAuthPhase.SIGNED_OUT -> LOGIN_ROUTE
             else -> null
         }
         if (destination != null) {
@@ -380,7 +418,17 @@ fun DriverAppNavigation() {
                 },
                 orderRefreshing = orderState.loading,
                 onOrders = { navController.openDriverTab(ORDERS_ROUTE) },
-                onEarnings = { navController.openDriverTab(EARNINGS_ROUTE) })
+                onEarnings = { navController.openDriverTab(EARNINGS_ROUTE) },
+                unreadNotifications = inbox.unreadCount,
+                onNotifications = { navController.navigate(NOTIFICATIONS_ROUTE) { launchSingleTop = true } })
+        }
+        composable(NOTIFICATIONS_ROUTE) {
+            LaunchedEffect(Unit) { notification.inbox.refresh() }
+            InboxScreen(inbox, Color(0xFFD5142C), onBack = { navController.popBackStack() },
+                onFilter = notification.inbox::filter, onRetry = notification.inbox::refresh,
+                onMore = notification.inbox::more, onOpen = notification::open, notice = notice,
+                onRequestPush = if (notification.pushConfigured && Build.VERSION.SDK_INT >= 33 &&
+                    !InboxSystemNotifications.canPost(context)) ({ pushPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) else null)
         }
         composable(ORDER_DETAIL_ROUTE) {
             val detailOwner = state.user?.id?.takeIf { state.phase == DriverAuthPhase.AUTHENTICATED }

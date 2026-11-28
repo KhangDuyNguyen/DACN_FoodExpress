@@ -9,7 +9,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -18,6 +20,7 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import vn.hutech.fooddelivery.assignment.AssignmentService;
+import vn.hutech.fooddelivery.notification.NotificationRealtimeChannel;
 
 import java.math.BigDecimal;
 import java.net.URLDecoder;
@@ -37,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
@@ -90,6 +94,9 @@ class VnPayPaymentIntegrationTest {
 
     @MockitoBean
     VnPayClient vnPayClient;
+
+    @MockitoSpyBean
+    SimpMessagingTemplate realtime;
 
     // ----- Dat don -----
 
@@ -178,6 +185,7 @@ class VnPayPaymentIntegrationTest {
     void successfulIpnPlacesOrderExactlyOnce() throws Exception {
         JsonNode order = placeOrder(login("0911000001"), "VNPAY");
         long orderId = order.get("id").asLong();
+        assertEquals(0, notificationRecipients(orderId, "placed").size());
         String code = order.get("code").asText();
         String amount = vnpAmount(order);
 
@@ -207,6 +215,25 @@ class VnPayPaymentIntegrationTest {
                 .andExpect(jsonPath("$.Message").value("Order already confirmed"));
         verify(assignmentService, never()).createOffer(anyLong());
         assertEquals(1, historyCount(orderId, "PLACED"));
+        assertEquals(jdbc.queryForList("""
+                SELECT o.customer_id FROM orders o WHERE o.id = :id
+                UNION ALL
+                SELECT m.owner_user_id FROM orders o JOIN restaurants r ON r.id = o.restaurant_id
+                JOIN merchants m ON m.id = r.merchant_id WHERE o.id = :id
+                ORDER BY 1
+                """, Map.of("id", orderId), Long.class), notificationRecipients(orderId, "placed"));
+        for (var entry : jdbc.queryForList("""
+                SELECT user_id, id FROM notifications WHERE event_key = :key
+                """, Map.of("key", "order:" + orderId + ":placed"))) {
+            long recipient = ((Number) entry.get("user_id")).longValue();
+            long notificationId = ((Number) entry.get("id")).longValue();
+            verify(realtime).convertAndSendToUser(eq(NotificationRealtimeChannel.principalName(recipient)),
+                    eq(NotificationRealtimeChannel.QUEUE), argThat(signal -> {
+                        JsonNode data = objectMapper.valueToTree(signal);
+                        return data.path("notificationId").asLong() == notificationId
+                                && "ORDER_PLACED".equals(data.path("eventType").asText());
+                    }));
+        }
     }
 
     @Test
@@ -254,6 +281,9 @@ class VnPayPaymentIntegrationTest {
         assertNull(payment.get("paid_at"));
         verify(assignmentService, never()).createOffer(anyLong());
         assertFalse(merchantSeesOrder(orderId));
+        assertEquals(List.of(jdbc.queryForObject("SELECT customer_id FROM orders WHERE id = :id",
+                Map.of("id", orderId), Long.class)), notificationRecipients(orderId, "cancelled"));
+        assertEquals(List.of(), notificationRecipients(orderId, "placed"));
     }
 
     // ----- Trang quay ve (trinh duyet cua khach) -----
@@ -438,6 +468,11 @@ class VnPayPaymentIntegrationTest {
             }
         }
         return false;
+    }
+
+    private List<Long> notificationRecipients(long orderId, String event) {
+        return jdbc.queryForList("SELECT user_id FROM notifications WHERE event_key = :key ORDER BY user_id",
+                Map.of("key", "order:" + orderId + ":" + event), Long.class);
     }
 
     private String orderStatus(long orderId) {

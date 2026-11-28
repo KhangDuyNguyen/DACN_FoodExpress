@@ -1,6 +1,7 @@
 package vn.hutech.fooddelivery.assignment;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
@@ -20,16 +21,18 @@ public class OfferCreationService {
 
     private final AssignmentOfferRepository offers;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
     private final NearestDriverSelector selector = new NearestDriverSelector();
 
     @Autowired
-    public OfferCreationService(AssignmentOfferRepository offers) {
-        this(offers, Clock.systemDefaultZone());
+    public OfferCreationService(AssignmentOfferRepository offers, ApplicationEventPublisher events) {
+        this(offers, Clock.systemDefaultZone(), events);
     }
 
-    OfferCreationService(AssignmentOfferRepository offers, Clock clock) {
+    OfferCreationService(AssignmentOfferRepository offers, Clock clock, ApplicationEventPublisher events) {
         this.offers = offers;
         this.clock = clock;
+        this.events = events;
     }
 
     /**
@@ -71,6 +74,9 @@ public class OfferCreationService {
             return Optional.empty();
         }
         var offeredAt = now.truncatedTo(ChronoUnit.SECONDS);
-        return Optional.of(offers.insertOffer(orderId, expectedDriver.driverId(), ranked.get().distanceKm(), offeredAt));
+        var offer = offers.insertOffer(orderId, expectedDriver.driverId(), ranked.get().distanceKm(), offeredAt);
+        events.publishEvent(new AssignmentOfferEvent(AssignmentOfferEvent.Kind.CREATED, offer.id(), orderId,
+                expectedRestaurant.id(), offer.driverId(), offer.expiresAt().atZone(clock.getZone()).toInstant()));
+        return Optional.of(offer);
     }
 }

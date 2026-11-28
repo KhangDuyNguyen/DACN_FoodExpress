@@ -284,9 +284,7 @@ class TrackingStompWebSocketIntegrationTest {
     @ParameterizedTest
     @ValueSource(booleans = { false, true })
     void merchantReceivesNewOrderViaNativeWebSocketOrSockJs(boolean sockJs) throws Exception {
-        // Native mirrors the merchant web client. SockJS also exercises the existing
-        // no-JWT connection path.
-        var merchant = connect(sockJs ? null : jwt.generateToken(userId("0901234567"), "MERCHANT"), sockJs);
+        var merchant = connect(jwt.generateToken(restaurantOwner(RESTAURANT), "MERCHANT"), sockJs);
         var messages = subscribeAndWaitForBroker(merchant, RESTAURANT_TOPIC);
 
         new TransactionTemplate(transactions).executeWithoutResult(
@@ -297,6 +295,52 @@ class TrackingStompWebSocketIntegrationTest {
         var order = json.readTree(received);
         assertEquals(orderId, order.path("id").asLong());
         assertEquals(RESTAURANT, order.path("restaurantId").asLong());
+    }
+
+    @Test
+    void merchantReconnectAndAccountSwitchRemoveOldSubscriptions() throws Exception {
+        long merchant = restaurantOwner(RESTAURANT);
+        long otherRestaurant = jdbc.queryForObject("""
+                SELECT MIN(r.id) FROM restaurants r JOIN merchants m ON m.id = r.merchant_id
+                WHERE m.owner_user_id <> :owner
+                """, Map.of("owner", merchant), Long.class);
+        String otherTopic = "/topic/restaurants/" + otherRestaurant + "/orders";
+        var first = connect(jwt.generateToken(merchant, "MERCHANT"), false);
+        subscribeAndWaitForBroker(first, RESTAURANT_TOPIC);
+        first.session().disconnect();
+        await().atMost(TIMEOUT).until(() -> subscriptionsFor(RESTAURANT_TOPIC).isEmpty());
+
+        var reconnected = connect(jwt.generateToken(merchant, "MERCHANT"), false);
+        subscribeAndWaitForBroker(reconnected, RESTAURANT_TOPIC);
+        reconnected.session().disconnect();
+        await().atMost(TIMEOUT).until(() -> subscriptionsFor(RESTAURANT_TOPIC).isEmpty());
+
+        var second = connect(jwt.generateToken(restaurantOwner(otherRestaurant), "MERCHANT"), false);
+        subscribeAndWaitForBroker(second, otherTopic);
+        assertTrue(subscriptionsFor(RESTAURANT_TOPIC).isEmpty());
+    }
+
+    @Test
+    void oneMerchantSessionCanSubscribeToTwoOwnedRestaurants() throws Exception {
+        long merchant = jdbc.queryForObject("""
+                SELECT m.owner_user_id FROM restaurants r JOIN merchants m ON m.id = r.merchant_id
+                GROUP BY m.owner_user_id HAVING COUNT(*) >= 2 ORDER BY m.owner_user_id LIMIT 1
+                """, Map.of(), Long.class);
+        var restaurants = jdbc.queryForList("""
+                SELECT r.id FROM restaurants r JOIN merchants m ON m.id = r.merchant_id
+                WHERE m.owner_user_id = :owner ORDER BY r.id LIMIT 2
+                """, Map.of("owner", merchant), Long.class);
+        var connection = connect(jwt.generateToken(merchant, "MERCHANT"), false);
+        for (long restaurant : restaurants) {
+            subscribeAndWaitForBroker(connection, "/topic/restaurants/" + restaurant + "/orders");
+        }
+    }
+
+    private long restaurantOwner(long restaurantId) {
+        return jdbc.queryForObject("""
+                SELECT m.owner_user_id FROM restaurants r JOIN merchants m ON m.id = r.merchant_id
+                WHERE r.id = :id
+                """, Map.of("id", restaurantId), Long.class);
     }
 
     private Connection connect(String token, boolean sockJs) throws Exception {
@@ -343,12 +387,16 @@ class TrackingStompWebSocketIntegrationTest {
 
         // Wait for the simple broker to process SUBSCRIBE before publishing the
         // fixture.
-        var probeHeaders = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
-        probeHeaders.setDestination(destination);
-        var probe = MessageBuilder.createMessage(new byte[0], probeHeaders.getMessageHeaders());
-        await().atMost(TIMEOUT).until(() -> broker.getSubscriptionRegistry().findSubscriptions(probe)
+        await().atMost(TIMEOUT).until(() -> subscriptionsFor(destination)
                 .values().stream().anyMatch(ids -> ids.contains(subscriptionId)));
         return messages;
+    }
+
+    private org.springframework.util.MultiValueMap<String, String> subscriptionsFor(String destination) {
+        var headers = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
+        headers.setDestination(destination);
+        return broker.getSubscriptionRegistry()
+                .findSubscriptions(MessageBuilder.createMessage(new byte[0], headers.getMessageHeaders()));
     }
 
     private void assertSubscribeRejected(Connection connection, String destination) throws Exception {

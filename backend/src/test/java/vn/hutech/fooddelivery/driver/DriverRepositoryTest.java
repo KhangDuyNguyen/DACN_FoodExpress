@@ -98,10 +98,10 @@ class DriverRepositoryTest {
                 """, Map.of());
         var otherBefore = driverRepository.findProfileByUserId(43).orElseThrow();
 
-        var updated = driverService.updateProfile(42, new UpdateDriverProfileRequest("BICYCLE", null));
+        var updated = driverService.updateProfile(42, new UpdateDriverProfileRequest("CAR", "51A-12345"));
 
         assertEquals(new DriverProfileResponse("Nguyen Van An", "0911111111", null,
-                "BICYCLE", null, "PENDING", true), updated);
+                "CAR", "51A-12345", "PENDING", true), updated);
         assertEquals(updated, driverService.getProfile(42));
         assertEquals(otherBefore, driverRepository.findProfileByUserId(43).orElseThrow());
     }
@@ -111,7 +111,7 @@ class DriverRepositoryTest {
         insertUser(42, "0911111111");
         jdbc.update("INSERT INTO drivers (user_id, vehicle_type) VALUES (42, 'BICYCLE')", Map.of());
 
-        var request = new UpdateDriverProfileRequest("BICYCLE", null);
+        var request = new UpdateDriverProfileRequest("MOTORBIKE", "59A1-12345");
         assertEquals(driverService.updateProfile(42, request), driverService.updateProfile(42, request));
     }
 

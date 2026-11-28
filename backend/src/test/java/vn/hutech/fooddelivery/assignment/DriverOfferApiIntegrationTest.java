@@ -7,6 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -88,8 +89,8 @@ class DriverOfferApiIntegrationTest {
         @Bean TestClock driverOfferTestClock() { return new TestClock(); }
 
         @Bean @Primary
-        OfferCreationService testOfferCreationService(AssignmentOfferRepository offers, TestClock clock) {
-            return new OfferCreationService(offers, clock);
+        OfferCreationService testOfferCreationService(AssignmentOfferRepository offers, TestClock clock, ApplicationEventPublisher events) {
+            return new OfferCreationService(offers, clock, events);
         }
 
         @Bean @Primary
@@ -100,8 +101,8 @@ class DriverOfferApiIntegrationTest {
 
         @Bean @Primary
         DriverOfferDecisionService testDriverOfferDecisionService(DriverOfferRepository offers,
-                                                                  AssignmentOfferRepository assignments, TestClock clock) {
-            return new DriverOfferDecisionService(offers, assignments, clock);
+                                                                  AssignmentOfferRepository assignments, TestClock clock, ApplicationEventPublisher events) {
+            return new DriverOfferDecisionService(offers, assignments, clock, events);
         }
 
         @Bean @Primary

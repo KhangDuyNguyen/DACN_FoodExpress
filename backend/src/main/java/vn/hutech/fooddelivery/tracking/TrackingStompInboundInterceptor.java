@@ -5,36 +5,34 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
-import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
+import vn.hutech.fooddelivery.notification.NotificationRealtimeChannel;
 import vn.hutech.fooddelivery.security.AuthUser;
 import vn.hutech.fooddelivery.security.JwtService;
 import vn.hutech.fooddelivery.user.UserRepository;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
 
 @Component
-public class TrackingStompInboundInterceptor implements ChannelInterceptor {
+public class TrackingStompInboundInterceptor implements org.springframework.messaging.support.ExecutorChannelInterceptor {
+    private static final String REGISTRATION_HEADER = "stompAuthorizationRegistration";
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String ORDER_TOPIC = "/topic/orders";
-    private static final Pattern RESTAURANT_ORDERS = Pattern.compile("/topic/restaurants/[1-9][0-9]*/orders");
+    private static final String BROKER_PREFIX = "/topic";
 
+    private final StompAuthorizationSessions sessions;
     private final JwtService jwtService;
     private final UserRepository users;
-    private final OrderTrackingSubscriptionAuthorization authorization;
 
-    public TrackingStompInboundInterceptor(JwtService jwtService, UserRepository users,
-                                           OrderTrackingSubscriptionAuthorization authorization) {
+    public TrackingStompInboundInterceptor(JwtService jwtService, UserRepository users, StompAuthorizationSessions sessions) {
         this.jwtService = jwtService;
         this.users = users;
-        this.authorization = authorization;
+        this.sessions = sessions;
     }
 
     @Override
@@ -47,14 +45,36 @@ public class TrackingStompInboundInterceptor implements ChannelInterceptor {
         switch (headers.getCommand()) {
             case CONNECT, STOMP -> authenticateConnect(headers);
             case SUBSCRIBE -> checkSubscription(headers);
+            case UNSUBSCRIBE -> sessions.unsubscribe(headers.getSessionId(), headers.getSubscriptionId());
+            case DISCONNECT -> sessions.disconnected(headers.getSessionId());
             case SEND, MESSAGE -> {
-                if (isOrderTopic(headers.getDestination())) {
-                    throw new AccessDeniedException("Client không được gửi dữ liệu vào topic theo dõi đơn");
+                String destination = headers.getDestination();
+                // Match the simple broker prefix. Backend publications do not use the client inbound channel.
+                if (destination != null && (destination.startsWith(BROKER_PREFIX)
+                        || destination.startsWith(NotificationRealtimeChannel.QUEUE_PREFIX)
+                        || destination.startsWith(NotificationRealtimeChannel.USER_PREFIX))) {
+                    throw new AccessDeniedException("Client không được gửi dữ liệu vào topic broadcast");
                 }
             }
             default -> { }
         }
         return message;
+    }
+
+    @Override
+    public void afterSendCompletion(Message<?> message, MessageChannel channel, boolean sent, Exception exception) {
+        if (!sent || exception != null) rollbackRegistration(message);
+    }
+
+    @Override
+    public void afterMessageHandled(Message<?> message, MessageChannel channel,
+            org.springframework.messaging.MessageHandler handler, Exception exception) {
+        if (exception != null) rollbackRegistration(message);
+    }
+
+    private void rollbackRegistration(Message<?> message) {
+        Object registration = message.getHeaders().get(REGISTRATION_HEADER);
+        if (registration instanceof StompAuthorizationSessions.Subscription owned) sessions.rollback(owned);
     }
 
     private void authenticateConnect(StompHeaderAccessor headers) {
@@ -64,42 +84,57 @@ public class TrackingStompInboundInterceptor implements ChannelInterceptor {
                 authorizationHeaders.addAll(headers.removeNativeHeader(name));
             }
         }
-        if (authorizationHeaders.size() != 1) {
+        if (authorizationHeaders.isEmpty()) {
             return;
+        }
+        if (authorizationHeaders.size() != 1) {
+            throw invalidSession();
         }
         String header = authorizationHeaders.getFirst();
         if (!header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
-            return;
+            throw invalidSession();
         }
 
         long userId;
         try {
             userId = jwtService.parse(header.substring(BEARER_PREFIX.length())).id();
         } catch (JwtException | IllegalArgumentException ignored) {
-            return;
+            throw invalidSession();
         }
-        users.findById(userId).filter(user -> !user.isBlocked()).ifPresent(user -> {
-            var principal = new AuthUser(user.id(), user.role());
-            var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.role()));
-            headers.setUser(UsernamePasswordAuthenticationToken.authenticated(principal, null, authorities));
-        });
+        final vn.hutech.fooddelivery.user.UserRow user;
+        try {
+            user = users.findById(userId).filter(account -> !account.isBlocked())
+                .orElseThrow(TrackingStompInboundInterceptor::invalidSession);
+        } catch (RuntimeException exception) {
+            throw invalidSession();
+        }
+        var authentication = new StompAuthentication(new AuthUser(user.id(), user.role()));
+        sessions.connected(headers.getSessionId(), header.substring(BEARER_PREFIX.length()), authentication);
+        headers.setUser(authentication);
     }
 
     private void checkSubscription(StompHeaderAccessor headers) {
-        String destination = headers.getDestination();
-        // The merchant web app subscribes to a concrete topic for each restaurant.
-        if (destination != null && RESTAURANT_ORDERS.matcher(destination).matches()) {
-            return;
+        headers.setHeader(REGISTRATION_HEADER, null);
+        var registration = sessions.subscribe(headers.getSessionId(), headers.getSubscriptionId(), headers.getDestination());
+        if (registration == null) {
+            throw new AccessDeniedException("Không có quyền đăng ký topic này");
         }
-        // Every other subscription must match one exact tracking topic. This rules out broker wildcards.
-        if (headers.getUser() instanceof Authentication authentication
-                && authorization.canSubscribe(authentication, destination)) {
-            return;
-        }
-        throw new AccessDeniedException("Không có quyền đăng ký topic này");
+        // Server-local bookkeeping. This is not a STOMP native header or an outbound payload field.
+        headers.setHeader(REGISTRATION_HEADER, registration);
     }
 
-    private static boolean isOrderTopic(String destination) {
-        return destination != null && (destination.equals(ORDER_TOPIC) || destination.startsWith(ORDER_TOPIC + "/"));
+    private static final class StompAuthentication extends UsernamePasswordAuthenticationToken {
+        private StompAuthentication(AuthUser user) {
+            super(user, null, List.of(new SimpleGrantedAuthority("ROLE_" + user.role())));
+        }
+
+        @Override
+        public String getName() {
+            return NotificationRealtimeChannel.principalName(((AuthUser) getPrincipal()).id());
+        }
+    }
+
+    private static AccessDeniedException invalidSession() {
+        return new AccessDeniedException("Phiên WebSocket không hợp lệ");
     }
 }

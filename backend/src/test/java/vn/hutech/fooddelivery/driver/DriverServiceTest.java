@@ -7,6 +7,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.Mock;
+import vn.hutech.fooddelivery.common.BadRequestException;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
@@ -71,12 +72,23 @@ class DriverServiceTest {
         var before = new DriverProfileResponse("Nguyen Van An", "0911111111", null,
                 "MOTORBIKE", "59A1-12345", "PENDING", false);
         var after = new DriverProfileResponse("Nguyen Van An", "0911111111", null,
-                "BICYCLE", null, "PENDING", false);
+                "CAR", "51A-12345", "PENDING", false);
         when(driverRepository.findProfileByUserId(42)).thenReturn(Optional.of(before), Optional.of(after));
-        when(driverRepository.updatePendingProfile(42, "BICYCLE", null)).thenReturn(1);
+        when(driverRepository.updatePendingProfile(42, "CAR", "51A-12345")).thenReturn(1);
 
-        assertEquals(after, driverService.updateProfile(42, new UpdateDriverProfileRequest("BICYCLE", "  ")));
-        verify(driverRepository).updatePendingProfile(42, "BICYCLE", null);
+        assertEquals(after, driverService.updateProfile(42, new UpdateDriverProfileRequest("CAR", " 51A-12345 ")));
+        verify(driverRepository).updatePendingProfile(42, "CAR", "51A-12345");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MOTORBIKE", "BICYCLE"})
+    void pendingDriverCannotSaveBicycle(String currentType) {
+        when(driverRepository.findProfileByUserId(42)).thenReturn(Optional.of(
+                new DriverProfileResponse("Nguyen Van An", "0911111111", null, currentType, null, "PENDING", false)));
+
+        assertThrows(BadRequestException.class,
+                () -> driverService.updateProfile(42, new UpdateDriverProfileRequest("BICYCLE", null)));
+        verify(driverRepository, never()).updatePendingProfile(anyLong(), anyString(), nullable(String.class));
     }
 
     @ParameterizedTest
@@ -105,10 +117,10 @@ class DriverServiceTest {
         when(driverRepository.findProfileByUserId(42)).thenReturn(Optional.of(
                 new DriverProfileResponse("Nguyen Van An", "0911111111", null,
                         "MOTORBIKE", "59A1-12345", "PENDING", false)));
-        when(driverRepository.updatePendingProfile(42, "BICYCLE", null)).thenReturn(0);
+        when(driverRepository.updatePendingProfile(42, "CAR", "51A-12345")).thenReturn(0);
 
         assertThrows(ConflictException.class,
-                () -> driverService.updateProfile(42, new UpdateDriverProfileRequest("BICYCLE", null)));
+                () -> driverService.updateProfile(42, new UpdateDriverProfileRequest("CAR", "51A-12345")));
         verify(driverRepository, times(1)).findProfileByUserId(42);
     }
 
