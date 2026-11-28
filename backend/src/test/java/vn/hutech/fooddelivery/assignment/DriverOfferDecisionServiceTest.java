@@ -8,6 +8,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import vn.hutech.fooddelivery.common.ConflictException;
 import vn.hutech.fooddelivery.common.ForbiddenException;
 import vn.hutech.fooddelivery.common.NotFoundException;
@@ -39,9 +40,11 @@ class DriverOfferDecisionServiceTest {
     @Mock DriverOfferRepository offers;
     @Mock AssignmentOfferRepository assignments;
 
+    @Mock ApplicationEventPublisher events;
+
     private DriverOfferDecisionService service(LocalDateTime now) {
         var zone = ZoneId.of("Asia/Ho_Chi_Minh");
-        return new DriverOfferDecisionService(offers, assignments, Clock.fixed(now.atZone(zone).toInstant(), zone));
+        return new DriverOfferDecisionService(offers, assignments, Clock.fixed(now.atZone(zone).toInstant(), zone), events);
     }
 
     private DriverOfferRepository.OfferSnapshot given(DriverCandidate driver, String offerStatus,

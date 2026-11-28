@@ -6,6 +6,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import vn.hutech.foodexpress.driver.data.session.DriverSessionStore
@@ -22,7 +24,8 @@ class DriverAuthRepository @Inject constructor(
     private val api: DriverAuthApi,
     private val sessions: DriverSessionStore,
 ) {
-    private var memoryToken: String? = null
+    private val activeToken = MutableStateFlow<String?>(null)
+    internal val accessTokens = activeToken.asStateFlow()
 
     suspend fun register(request: DriverRegisterRequest): DriverRegisterResult {
         val response = try {
@@ -39,7 +42,7 @@ class DriverAuthRepository @Inject constructor(
         if (response.code() == 201) {
             val user = response.body()?.user
             return if (user != null && user.id > 0 && user.role == "DRIVER" && user.status == "ACTIVE") {
-                // No JWT is deserialized, stored or assigned to memoryToken in this path.
+                // Registration does not create an authenticated session in this app.
                 DriverRegisterResult.Success
             } else {
                 DriverRegisterResult.Failed("Máy chủ đã nhận đăng ký nhưng phản hồi không hợp lệ. Vui lòng thử đăng nhập trước khi gửi lại.")
@@ -102,7 +105,7 @@ class DriverAuthRepository @Inject constructor(
             withContext(Dispatchers.IO) {
                 if (rememberLogin) sessions.saveToken(token) else sessions.clear()
             }
-            memoryToken = token
+            activeToken.value = token
             DriverAuthResult.Authenticated(requireNotNull(user), expiry)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -113,7 +116,7 @@ class DriverAuthRepository @Inject constructor(
 
     suspend fun restoreSession(): DriverAuthResult {
         val token = try {
-            memoryToken ?: withContext(Dispatchers.IO) { sessions.readToken() }
+            activeToken.value ?: withContext(Dispatchers.IO) { sessions.readToken() }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -146,19 +149,19 @@ class DriverAuthRepository @Inject constructor(
         }
         val rejection = rejectUser(user)
         if (rejection != null) return discardSession(rejection)
-        memoryToken = token
+        activeToken.value = token
         return DriverAuthResult.Authenticated(user, expiry)
     }
 
     suspend fun logout(): DriverAuthResult = discardSession(null)
 
     // Profile shares Login's session and expiry rule, including sessions without Remember Login.
-    internal fun currentAccessToken(): String? = memoryToken?.takeIf { token ->
+    internal fun currentAccessToken(): String? = activeToken.value?.takeIf { token ->
         tokenExpiry(token)?.let { it > nowSeconds() } == true
     }
 
     private suspend fun discardSession(message: String?): DriverAuthResult {
-        memoryToken = null
+        activeToken.value = null
         return try {
             withContext(Dispatchers.IO) { sessions.clear() }
             if (message == null) DriverAuthResult.NoSession else DriverAuthResult.Rejected(message)

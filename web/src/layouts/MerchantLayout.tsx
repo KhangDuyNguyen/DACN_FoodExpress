@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   Layout,
   Menu,
@@ -25,7 +25,6 @@ import {
   MenuUnfoldOutlined,
   ShopOutlined,
   UserOutlined,
-  BellOutlined,
   BranchesOutlined,
   UnorderedListOutlined,
   SettingOutlined,
@@ -33,11 +32,23 @@ import {
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { NotificationBell, NotificationProvider } from '../components/notifications/NotificationCenter'
 
 const { Header, Sider, Content, Footer } = Layout
 const { Text } = Typography
 
 export const MerchantLayout: React.FC = () => {
+  const { user, token } = useAuth()
+  const userId = user?.role === 'MERCHANT' ? user.id : null
+  const session = useMemo(() => userId !== null && token ? {
+    userId, token, sessionId: crypto.getRandomValues(new Uint32Array(4)).join('-'),
+  } : null, [userId, token])
+  return session ? <NotificationProvider key={session.sessionId} {...session} role="MERCHANT">
+    <MerchantContent />
+  </NotificationProvider> : <MerchantContent />
+}
+
+function MerchantContent() {
   const [collapsed, setCollapsed] = useState(false)
   const [isOpenStore, setIsOpenStore] = useState(true)
   const location = useLocation()
@@ -247,11 +258,11 @@ export const MerchantLayout: React.FC = () => {
       </Sider>
 
       {/* Vùng nội dung chính */}
-      <Layout style={{ background: '#f8fafc' }}>
+      <Layout style={{ background: '#f8fafc', minWidth: 0 }}>
         {/* Header phía trên */}
         <Header
           style={{
-            padding: '0 24px',
+            padding: '0 clamp(6px, 2vw, 24px)',
             background: '#ffffff',
             display: 'flex',
             alignItems: 'center',
@@ -264,19 +275,20 @@ export const MerchantLayout: React.FC = () => {
           }}
         >
           {/* Nút thu gọn và Tên quán */}
-          <Space size="middle">
+          <div className="flex min-w-0 items-center gap-1 sm:gap-3">
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
               onClick={() => setCollapsed(!collapsed)}
               style={{ fontSize: 16, width: 40, height: 40 }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Text strong style={{ fontSize: 15, color: '#1e293b' }}>
+            <div className="flex min-w-0 items-center gap-2">
+              <Text strong className="truncate" style={{ fontSize: 15, color: '#1e293b' }}>
                 Quán: Cơm Tấm Sài Gòn (CN 1)
               </Text>
               <Badge
                 status={isOpenStore ? 'success' : 'default'}
+                className="hidden md:inline-flex"
                 text={
                   <Text style={{ fontSize: 12, color: isOpenStore ? '#16a34a' : '#64748b' }}>
                     {isOpenStore ? 'Đang mở cửa' : 'Đã đóng cửa'}
@@ -284,12 +296,12 @@ export const MerchantLayout: React.FC = () => {
                 }
               />
             </div>
-          </Space>
+          </div>
 
           {/* Phía phải: Switch nhận đơn, Chuông thông báo & Hồ sơ */}
-          <Space size="middle">
-            <Space align="center" style={{ display: 'flex', alignItems: 'center' }}>
-              <Text style={{ fontSize: 12 }} type="secondary">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+            <Space align="center">
+              <Text className="hidden lg:inline" style={{ fontSize: 12 }} type="secondary">
                 Nhận đơn:
               </Text>
               <Switch
@@ -301,14 +313,7 @@ export const MerchantLayout: React.FC = () => {
               />
             </Space>
 
-            <Badge count={2} size="small" offset={[-2, 2]}>
-              <Button
-                type="text"
-                shape="circle"
-                icon={<BellOutlined style={{ fontSize: 17, color: '#64748b' }} />}
-                onClick={() => message.info('2 đơn hàng mới đang chờ quán xác nhận!')}
-              />
-            </Badge>
+            <NotificationBell />
 
             <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
               <Space style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: 6 }}>
@@ -316,7 +321,7 @@ export const MerchantLayout: React.FC = () => {
                   style={{ backgroundColor: '#16a34a', verticalAlign: 'middle' }}
                   icon={<UserOutlined />}
                 />
-                <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                <div className="hidden flex-col md:flex" style={{ lineHeight: 1.2 }}>
                   <Text strong style={{ fontSize: 14 }}>
                     Chủ quán Điệp
                   </Text>
@@ -326,7 +331,7 @@ export const MerchantLayout: React.FC = () => {
                 </div>
               </Space>
             </Dropdown>
-          </Space>
+          </div>
         </Header>
 
         {/* Nội dung trang */}

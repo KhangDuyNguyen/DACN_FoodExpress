@@ -6,6 +6,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -80,16 +81,16 @@ class AssignmentRecoveryIntegrationTest {
     @TestConfiguration(proxyBeanMethods = false)
     static class Services {
         @Bean TestClock recoveryTestClock() { return new TestClock(); }
-        @Bean OfferCreationService offerCreationService(AssignmentOfferRepository parents, TestClock clock) {
-            return new OfferCreationService(parents, clock);
+        @Bean OfferCreationService offerCreationService(AssignmentOfferRepository parents, TestClock clock, ApplicationEventPublisher events) {
+            return new OfferCreationService(parents, clock, events);
         }
         @Bean AssignmentService assignmentService(AssignmentRepository candidates, AssignmentOfferRepository parents,
                                                    OfferCreationService creation, TestClock clock) {
             return new AssignmentService(candidates, parents, creation, clock);
         }
         @Bean DriverOfferDecisionService driverOfferDecisionService(DriverOfferRepository offers,
-                                                                     AssignmentOfferRepository parents, TestClock clock) {
-            return new DriverOfferDecisionService(offers, parents, clock);
+                                                                     AssignmentOfferRepository parents, TestClock clock, ApplicationEventPublisher events) {
+            return new DriverOfferDecisionService(offers, parents, clock, events);
         }
         @Bean AssignmentOfferLifecycleService assignmentOfferLifecycleService(AssignmentOfferRepository parents,
                 DriverOfferRepository offers, AssignmentRecoveryRepository repository, TestClock clock) {

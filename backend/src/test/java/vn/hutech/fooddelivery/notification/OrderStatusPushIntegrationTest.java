@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.timeout;
@@ -42,6 +43,7 @@ class OrderStatusPushIntegrationTest {
     private static final long OTHER = 746002;
     private static final long DRIVER = 746003;
     private static final long MERCHANT = 746004;
+    private static final long ADMIN = 746005;
     private static final long ORDER = 746010;
 
     @Container @ServiceConnection
@@ -57,30 +59,59 @@ class OrderStatusPushIntegrationTest {
 
     @BeforeEach
     void fixture() {
-        jdbc.update("DELETE FROM device_tokens WHERE user_id IN (?, ?)", OWNER, OTHER);
+        jdbc.update("DELETE FROM device_tokens WHERE user_id IN (?, ?, ?)", OWNER, OTHER, DRIVER);
         addUser(OWNER, "CUSTOMER");
         addUser(OTHER, "CUSTOMER");
         addUser(DRIVER, "DRIVER");
+        addUser(MERCHANT, "MERCHANT");
+        addUser(ADMIN, "ADMIN");
     }
 
     @Test
-    void registersOnlyForTheAuthenticatedCustomerAndRebindsTheSameDevice() {
+    void registersForCustomerOrDriverAndRebindsTheSameDevice() {
         assertEquals(HttpStatus.UNAUTHORIZED, rest.postForEntity("/api/devices/token",
                 Map.of("token", "fixture-device"), Void.class).getStatusCode());
-        assertEquals(HttpStatus.FORBIDDEN, device(HttpMethod.POST, DRIVER, "DRIVER", "fixture-device"));
+        assertEquals(HttpStatus.FORBIDDEN, device(HttpMethod.POST, MERCHANT, "MERCHANT", "fixture-device"));
+        assertEquals(HttpStatus.FORBIDDEN, device(HttpMethod.POST, ADMIN, "ADMIN", "fixture-device"));
         assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, OWNER, "CUSTOMER", "fixture-device"));
         assertEquals(java.util.List.of("fixture-device"), tokens.findActiveCustomerTokens(OWNER));
-        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, OTHER, "CUSTOMER", "fixture-device"));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, DRIVER, "DRIVER", "fixture-device"));
         assertEquals(java.util.List.of(), tokens.findActiveCustomerTokens(OWNER));
         assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.DELETE, OWNER, "CUSTOMER", "fixture-device"));
-        assertEquals(java.util.List.of("fixture-device"), tokens.findActiveCustomerTokens(OTHER));
-        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.DELETE, OTHER, "CUSTOMER", "fixture-device"));
-        assertEquals(java.util.List.of(), tokens.findActiveCustomerTokens(OTHER));
+        assertEquals(java.util.List.of("fixture-device"), tokens.findActiveAndroidTokens(DRIVER));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.DELETE, DRIVER, "DRIVER", "fixture-device"));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.DELETE, DRIVER, "DRIVER", "fixture-device"));
+        assertEquals(java.util.List.of(), tokens.findActiveAndroidTokens(DRIVER));
+    }
+
+    @Test
+    void validatesTokenAndSupportsRefreshDuplicateAndMultipleDevices() {
+        var bad = new HttpHeaders();
+        bad.setBearerAuth("invalid-fixture");
+        assertEquals(HttpStatus.UNAUTHORIZED, rest.exchange("/api/devices/token", HttpMethod.POST,
+                new HttpEntity<>(Map.of("token", "fixture-device"), bad), Void.class).getStatusCode());
+        for (String invalid : java.util.List.of("", "contains space", "x".repeat(256))) {
+            assertEquals(HttpStatus.BAD_REQUEST, device(HttpMethod.POST, OWNER, "CUSTOMER", invalid));
+        }
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, OWNER, "CUSTOMER", "fixture-old"));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, OWNER, "CUSTOMER", "fixture-old"));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, OWNER, "CUSTOMER", "fixture-other"));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, OWNER, "CUSTOMER", "fixture-refresh"));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.DELETE, OWNER, "CUSTOMER", "fixture-old"));
+        assertEquals(java.util.List.of("fixture-other", "fixture-refresh"), tokens.findActiveAndroidTokens(OWNER));
+    }
+
+    @Test
+    void caseVariantCannotTransferOrDeleteAnExistingBinding() {
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, OWNER, "CUSTOMER", "Fixture-same"));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.POST, DRIVER, "DRIVER", "fixture-same"));
+        assertEquals(HttpStatus.NO_CONTENT, device(HttpMethod.DELETE, OWNER, "CUSTOMER", "fixture-same"));
+        assertEquals(java.util.List.of("Fixture-same"), tokens.findActiveAndroidTokens(OWNER));
+        assertEquals(java.util.List.of(), tokens.findActiveAndroidTokens(DRIVER));
     }
 
     @Test
     void onlyACommittedTransitionPushesToTheOwnerAndFailureDoesNotRollBack() throws Exception {
-        addUser(MERCHANT, "MERCHANT");
         jdbc.update("INSERT INTO merchants (id, owner_user_id, business_name) VALUES (?, ?, 'Push fixture')", MERCHANT, MERCHANT);
         jdbc.update("""
                 INSERT INTO restaurants (id, merchant_id, name, address, lat, lng)
@@ -114,6 +145,7 @@ class OrderStatusPushIntegrationTest {
         });
         verify(push, timeout(2500)).sendOrderUpdate("owner-fixture-device");
         verify(push, after(200).never()).sendOrderUpdate("other-fixture-device");
+        verify(push, after(200).never()).sendInbox(anyString(), anyLong(), anyString(), nullable(Long.class));
         assertEquals("DELIVERING", storedOrderStatus());
     }
 

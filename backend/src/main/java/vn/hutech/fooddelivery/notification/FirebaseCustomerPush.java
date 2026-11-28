@@ -4,6 +4,7 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.AndroidConfig;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.MessagingErrorCode;
@@ -34,6 +35,25 @@ class FirebaseCustomerPush {
                         .setBody("Mở Food Express để xem trạng thái mới.")
                         .build())
                 .build();
+        return send(message);
+    }
+
+    boolean sendInbox(String token, long notificationId, String eventType, Long ttlMillis)
+            throws IOException, FirebaseMessagingException {
+        return send(inboxMessage(token, notificationId, eventType, ttlMillis));
+    }
+
+    static Message inboxMessage(String token, long notificationId, String eventType, Long ttlMillis) {
+        var message = Message.builder().setToken(token)
+                .putData("notificationId", Long.toString(notificationId))
+                .putData("eventType", eventType);
+        if (ttlMillis != null) {
+            message.setAndroidConfig(AndroidConfig.builder().setTtl(ttlMillis).build());
+        }
+        return message.build();
+    }
+
+    private boolean send(Message message) throws IOException, FirebaseMessagingException {
         try {
             messaging().send(message);
             return true;

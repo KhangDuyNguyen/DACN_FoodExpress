@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import vn.hutech.foodexpress.core.notification.InboxBell
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -67,6 +68,8 @@ fun RestaurantListScreen(
     onRestaurantClick: (Long) -> Unit,
     onOrdersClick: () -> Unit = {},
     viewModel: RestaurantListViewModel = hiltViewModel(),
+    unreadNotifications: Int? = null,
+    onNotificationsClick: (() -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
@@ -89,6 +92,7 @@ fun RestaurantListScreen(
                     Text("FoodExpress", fontWeight = FontWeight.Bold, color = Orange)
                 },
                 actions = {
+                    if (onNotificationsClick != null) InboxBell(Orange, unreadNotifications, onNotificationsClick)
                     androidx.compose.material3.IconButton(onClick = onOrdersClick) {
                         Text("🧾", fontSize = 20.sp)
                     }

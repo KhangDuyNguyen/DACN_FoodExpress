@@ -11,6 +11,7 @@ import Checkout from './pages/customer/Checkout'
 import CustomerHome from './pages/customer/CustomerHome'
 import Login from './pages/customer/Login'
 import MyOrders from './pages/customer/MyOrders'
+import NotificationsPage from './pages/customer/NotificationsPage'
 import OrderSuccess from './pages/customer/OrderSuccess'
 import OrderTracking from './pages/customer/OrderTracking'
 import Register from './pages/customer/Register'
@@ -28,6 +29,7 @@ import AdminVoucherPage from './pages/admin/AdminVoucherPage'
 // Cửa hàng (Merchant)
 import MenuManagement from './pages/merchant/MenuManagement'
 import MerchantOrdersPage from './pages/merchant/MerchantOrdersPage'
+import MerchantNotificationsPage from './pages/merchant/MerchantNotificationsPage'
 import MerchantOverviewPage from './pages/merchant/MerchantOverviewPage'
 import MerchantRevenuePage from './pages/merchant/MerchantRevenuePage'
 import MerchantSupportPage from './pages/merchant/MerchantSupportPage'
@@ -54,6 +56,7 @@ export default function App() {
           <Route path="cart" element={<Cart />} />
           <Route path="checkout" element={<Checkout />} />
           <Route path="orders" element={<MyOrders />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="orders/:id" element={<OrderTracking />} />
           <Route path="orders/:id/success" element={<OrderSuccess />} />
           <Route path="payment/vnpay-return" element={<VnPayReturn />} />
@@ -71,6 +74,7 @@ export default function App() {
           <Route path="merchant" element={<MerchantOverviewPage />} />
           <Route path="merchant/branch" element={<BranchSelector />} />
           <Route path="merchant/orders" element={<MerchantOrdersPage />} />
+          <Route path="merchant/notifications" element={<MerchantNotificationsPage />} />
           <Route path="merchant/menu" element={<MenuManagement />} />
           <Route path="merchant/settings" element={<RestaurantSettings />} />
           <Route path="merchant/vouchers" element={<MerchantVouchersPage />} />

@@ -53,6 +53,7 @@ import vn.hutech.foodexpress.driver.data.profile.DriverProfile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import vn.hutech.foodexpress.core.notification.InboxBell
 
 private val DashboardRed = Color(0xFFE7192D)
 private val DashboardPink = Color(0xFFFFF0F2)
@@ -74,6 +75,8 @@ fun DriverDashboardScreen(
     orderRefreshing: Boolean = false,
     onOrders: (() -> Unit)? = null,
     onEarnings: (() -> Unit)? = null,
+    unreadNotifications: Int? = null,
+    onNotifications: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var permissionRequested by rememberSaveable { mutableStateOf(false) }
@@ -130,6 +133,8 @@ fun DriverDashboardScreen(
                     Text("Tài xế", Modifier.padding(horizontal = 9.dp, vertical = 3.dp), color = DashboardRed,
                         fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
+                Spacer(Modifier.weight(1f))
+                if (onNotifications != null) InboxBell(Color.White, unreadNotifications, onNotifications)
             }
         },
         bottomBar = { DriverDashboardNavigation(onProfile, enabled = !state.saving, onOrders = onOrders, onEarnings = onEarnings) },
