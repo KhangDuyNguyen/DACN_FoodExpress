@@ -56,11 +56,14 @@ class TrackingStompInboundInterceptorTest {
     private final String signingKey = UUID.randomUUID().toString();
     private final JwtService jwt = new JwtService(new JwtProperties(signingKey, 5));
     private TrackingStompInboundInterceptor interceptor;
+    private final java.util.Map<Principal,String> sessionIds = new java.util.IdentityHashMap<>();
 
     @BeforeEach
     void setUp() {
-        interceptor = new TrackingStompInboundInterceptor(jwt, users, new OrderTrackingSubscriptionAuthorization(orders),
-                new MerchantOrderSubscriptionAuthorization(merchantOrders, users));
+        interceptor = new TrackingStompInboundInterceptor(jwt, users,
+                new StompAuthorizationSessions(jwt, users, new OrderTrackingSubscriptionAuthorization(orders),
+                        new MerchantOrderSubscriptionAuthorization(merchantOrders, users),
+                        org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class)));
     }
 
     @ParameterizedTest
@@ -273,12 +276,14 @@ class TrackingStompInboundInterceptorTest {
         var headers = StompHeaderAccessor.create(command);
         headers.setDestination(destination);
         headers.setUser(user);
+        headers.setSessionId(sessionIds.get(user));
         return headers;
     }
 
     private void assertAllowed(StompHeaderAccessor headers) {
         Message<byte[]> message = message(headers);
         assertSame(message, interceptor.preSend(message, channel));
+        if (headers.getUser() != null) sessionIds.put(headers.getUser(), headers.getSessionId());
     }
 
     private void assertDenied(StompHeaderAccessor headers) {
@@ -287,6 +292,10 @@ class TrackingStompInboundInterceptorTest {
     }
 
     private Message<byte[]> message(StompHeaderAccessor headers) {
+        if (headers.getSessionId() == null) headers.setSessionId(UUID.randomUUID().toString());
+        if (headers.getCommand() == StompCommand.SUBSCRIBE && headers.getSubscriptionId() == null) {
+            headers.setSubscriptionId(UUID.randomUUID().toString());
+        }
         headers.setLeaveMutable(true);
         return MessageBuilder.createMessage(new byte[0], headers.getMessageHeaders());
     }
