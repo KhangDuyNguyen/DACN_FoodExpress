@@ -1,3 +1,4 @@
+import { invalidateMerchantOrders, merchantOrderKeys } from '../../pages/merchant/merchantOrderQueries'
 import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { Client, ReconnectionTimeMode } from '@stomp/stompjs'
 import { isAxiosError } from 'axios'
@@ -21,6 +22,7 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
   const navigate = useNavigate()
   const [denial, setDenial] = useState<Denial | null>(null)
   const denied = useRef(false)
+  const alive = useRef(true)
   const logoutRef = useRef(logout)
   useEffect(() => { logoutRef.current = logout }, [logout])
   const lifetime = useRef<Lifetime | null>(null)
@@ -35,7 +37,8 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
   const [toasts, setToasts] = useState<Toast[]>([])
   const client = useMemo(() => notificationClient(token), [token])
   const key = useMemo(() => ['notifications', role, userId, sessionId] as const, [role, sessionId, userId])
-  const current = useCallback(() => !denied.current && localStorage.getItem('token') === token, [token])
+  const orderScope = useMemo(() => role === 'MERCHANT' ? merchantOrderKeys.scope(userId, sessionId) : undefined, [role, userId, sessionId])
+  const current = useCallback(() => alive.current && !denied.current && localStorage.getItem('token') === token, [token])
   const valid = denial === null && localStorage.getItem('token') === token
   const claimPlaced = useCallback((id: unknown) => {
     if (!notificationOrderPath(id)) return true
@@ -53,8 +56,14 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
     setToasts([])
     void queryClient.cancelQueries({ queryKey: key })
     queryClient.removeQueries({ queryKey: key })
+    if (orderScope) {
+      void queryClient.cancelQueries({ queryKey: orderScope })
+      queryClient.removeQueries({ queryKey: orderScope })
+    }
     if (reason === 401 && sameToken) logoutRef.current()
-  }, [key, queryClient, token])
+  }, [key, orderScope, queryClient, token])
+
+  const merchantSession = useMemo(() => orderScope ? { scope: orderScope, current, reject: revoke } : undefined, [orderScope, current, revoke])
 
   const checkError = useCallback((error: unknown) => {
     if (!current() || !isAxiosError(error)) return
@@ -92,6 +101,8 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
     const controller = new AbortController()
     const seen = new Set<number>()
     const pending = new Set<number>()
+    let ordersDirty = false
+    let ordersSyncing = false
     let refreshNeeded = false
     let syncing = false
     let started = false
@@ -103,7 +114,7 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
     const active = () => !controller.signal.aborted && current()
 
     function schedule() {
-      if (!active() || syncing || timer || (!refreshNeeded && pending.size === 0)) return
+      if (!active() || syncing || timer || (!refreshNeeded && pending.size === 0 && (!ordersDirty || ordersSyncing))) return
       timer = setTimeout(() => {
         timer = undefined
         void sync()
@@ -116,9 +127,18 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
       refreshNeeded = false
       const ids = new Set(pending)
       pending.clear()
+      if (ordersDirty && !ordersSyncing && orderScope) {
+        ordersDirty = false
+        ordersSyncing = true
+        void invalidateMerchantOrders(queryClient, orderScope).catch(() => {}).finally(() => {
+          ordersSyncing = false
+          schedule()
+        })
+      }
       const allKey = [...key, false]
       const unreadKey = [...key, true]
       try {
+        if (!active()) return
         const old = queryClient.getQueryData<InfiniteData<NotificationPage>>(allKey)
         for (const page of old?.pages ?? []) for (const item of page.items) seen.add(item.id)
         await queryClient.invalidateQueries({ queryKey: key, refetchType: 'none' })
@@ -154,6 +174,7 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
     }
 
     function refresh() {
+      if (orderScope) ordersDirty = true
       refreshNeeded = true
       schedule()
     }
@@ -198,7 +219,12 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
           subscription = socket?.subscribe('/user/queue/notifications', message => {
             if (!active()) return
             const id = readNotificationSignal(message.body)
-            if (id === null || seen.has(id)) return
+            if (id === null) return
+            if (orderScope) {
+              ordersDirty = true
+              refreshNeeded = true
+            }
+            if (seen.has(id)) { schedule(); return }
             pending.add(id)
             schedule()
           })
@@ -241,12 +267,17 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
       if (lifetime.current === state) lifetime.current = null
       queueMicrotask(() => {
         if (lifetime.current === null) {
+          alive.current = false
           void queryClient.cancelQueries({ queryKey: key })
           queryClient.removeQueries({ queryKey: key })
+          if (orderScope) {
+            void queryClient.cancelQueries({ queryKey: orderScope })
+            queryClient.removeQueries({ queryKey: orderScope })
+          }
         }
       })
     }
-  }, [checkError, claimPlaced, current, key, queryClient, revoke, role, soundKey, token, valid])
+  }, [checkError, claimPlaced, current, key, orderScope, queryClient, revoke, role, soundKey, token, valid])
 
   const dismiss = useCallback((id: number) => setToasts(previous => previous.filter(toast => toast.item.id !== id)), [])
   const reading = useRef(new Set<number>())
@@ -289,6 +320,7 @@ export function useNotificationSession({ sessionId, userId, token, role = 'CUSTO
 
   const items = uniqueNotificationItems(selected.data?.pages ?? [])
   const value: Center = {
+    merchantSession,
     role, allowOrderPopup: id => current() && !realtime.current && claimPlaced(id),
     valid, denial, unread: valid ? all.data?.pages[0]?.unreadCount : undefined,
     unreadOnly: filter, setUnreadOnly: setFilter, items: valid ? (filter ? items.filter(item => !item.isRead) : items) : [],

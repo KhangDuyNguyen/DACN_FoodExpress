@@ -1,3 +1,5 @@
+import { isAxiosError } from 'axios'
+import { invalidateMerchantOrders, merchantOrderKeys, type MerchantOrderScope } from './merchantOrderQueries'
 import React, { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   Alert,
@@ -105,10 +107,46 @@ function getWsUrl(): string {
 type ConnectionStatus = 'Online' | 'Connecting' | 'Offline'
 
 export const MerchantOrdersPage: React.FC = () => {
+  const center = useNotificationCenter()
+  const { user, token } = useAuth()
+  const session = center?.merchantSession
+  if (!center?.valid || !session || user?.id !== session.scope[1] || !token || !session.current()) return null
+  return <MerchantOrdersSession key={session.scope[2]} scope={session.scope} />
+}
+
+const MerchantOrdersSession: React.FC<{ scope: MerchantOrderScope }> = ({ scope }) => {
   const queryClient = useQueryClient()
   const { user, token } = useAuth()
   const userId = user?.role === 'MERCHANT' ? user.id : undefined
   const notificationCenter = useNotificationCenter()
+  const session = notificationCenter!.merchantSession!
+  const requestSession = { token: token!, current: session.current }
+  const [available, setAvailable] = useState(() => document.visibilityState === 'visible' && navigator.onLine)
+  async function readCurrent<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
+    try { return await work() }
+    catch (error) {
+      if (!signal.aborted && session.current() && isAxiosError(error)) {
+        const status = error.response?.status
+        if (status === 401 || status === 403) session.reject(status)
+      }
+      throw error
+    }
+  }
+  useEffect(() => {
+    function update() {
+      const ready = document.visibilityState === 'visible' && navigator.onLine
+      setAvailable(ready)
+      if (!ready) void queryClient.cancelQueries({ queryKey: scope })
+    }
+    document.addEventListener('visibilitychange', update)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      document.removeEventListener('visibilitychange', update)
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [queryClient, scope])
   const [restaurantId, setRestaurantId] = useState<number | undefined>()
   const [tab, setTab] = useState<OrderStatus | 'ALL'>('PLACED')
   const [page, setPage] = useState(0)
@@ -122,7 +160,11 @@ export const MerchantOrdersPage: React.FC = () => {
 
   const restaurantIdRef = useRef<number | undefined>(restaurantId)
   const queryClientRef = useRef(queryClient)
-  const { data: restaurants = [] } = useQuery({ queryKey: ['merchant-restaurants'], queryFn: fetchMyRestaurants })
+  const { data: restaurants = [] } = useQuery({
+    queryKey: merchantOrderKeys.restaurants(scope),
+    queryFn: ({ signal }) => readCurrent(() => fetchMyRestaurants(signal, requestSession), signal),
+    enabled: available && session.current(), retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false,
+  })
   const restaurantsRef = useRef(restaurants)
 
   useEffect(() => {
@@ -138,30 +180,41 @@ export const MerchantOrdersPage: React.FC = () => {
   }, [restaurants])
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
-    queryKey: ['merchant-orders', restaurantId, tab, page],
-    queryFn: () =>
-      fetchMerchantOrders({ restaurantId, status: tab === 'ALL' ? undefined : tab, page, size: PAGE_SIZE }),
+    queryKey: merchantOrderKeys.list(scope, restaurantId, tab, page),
+    queryFn: ({ signal }) => readCurrent(() =>
+      fetchMerchantOrders({ restaurantId, status: tab === 'ALL' ? undefined : tab, page, size: PAGE_SIZE }, signal, requestSession), signal),
+    enabled: available && session.current(), retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false,
     placeholderData: keepPreviousData,
-    refetchInterval: connectionStatus === 'Online' ? false : 15_000,
+    refetchInterval: available && session.current() ? 15_000 : false,
   })
 
   const { data: detail, isLoading: loadingDetail } = useQuery({
-    queryKey: ['merchant-order', detailId],
-    queryFn: () => fetchMerchantOrder(detailId as number),
-    enabled: detailId !== null,
+    queryKey: merchantOrderKeys.detail(scope, detailId),
+    queryFn: ({ signal }) => readCurrent(() => fetchMerchantOrder(detailId as number, signal, requestSession), signal),
+    enabled: detailId !== null && available && session.current(),
+    refetchInterval: available && session.current() ? 15_000 : false,
+    retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false,
   })
 
   const statusMutation = useMutation({
     mutationFn: (vars: { id: number; status: OrderStatus; reason?: string }) =>
-      changeOrderStatus(vars.id, { status: vars.status, reason: vars.reason }),
+      changeOrderStatus(vars.id, { status: vars.status, reason: vars.reason }, requestSession),
     onSuccess: (order) => {
+      if (!session.current()) return
       message.success(`Đơn ${order.code}: ${statusLabel(order.status)}`)
-      queryClient.invalidateQueries({ queryKey: ['merchant-orders'] })
-      queryClient.setQueryData(['merchant-order', order.id], order)
+      void invalidateMerchantOrders(queryClient, scope)
+      queryClient.setQueryData(merchantOrderKeys.detail(scope, order.id), order)
       setCancelTarget(null)
       setCancelReason('')
     },
-    onError: (error) => message.error(errorText(error)),
+    onError: (error) => {
+      if (!session.current()) return
+      if (isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+        session.reject(error.response.status)
+        return
+      }
+      message.error(errorText(error))
+    },
   })
 
   // Xu ly su kien don hang moi tu WebSocket STOMP
@@ -198,7 +251,7 @@ export const MerchantOrdersPage: React.FC = () => {
         if (matchesFilter) {
           (['PLACED', 'ALL'] as const).forEach((targetTab) => {
             queryClientRef.current.setQueryData<PageResponse<MerchantOrderSummary>>(
-              ['merchant-orders', currentFilterRestaurantId, targetTab, 0],
+              merchantOrderKeys.list(scope, currentFilterRestaurantId, targetTab, 0),
               (old) => {
                 if (!old) return old
                 if (old.items.some((item) => item.id === incomingOrder.id)) {
@@ -246,7 +299,7 @@ export const MerchantOrdersPage: React.FC = () => {
               }
               setTab('PLACED')
               setPage(0)
-              queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
+              invalidateMerchantOrders(queryClientRef.current, scope)
               notification.destroy(key)
             }}
           >
@@ -257,7 +310,7 @@ export const MerchantOrdersPage: React.FC = () => {
       }
 
       // Invalidate queries de dong bo tong so don va phan trang voi backend
-      queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
+      invalidateMerchantOrders(queryClientRef.current, scope)
     } catch {
       console.error('Lỗi xử lý sự kiện đơn hàng WebSocket')
     }
@@ -282,7 +335,7 @@ export const MerchantOrdersPage: React.FC = () => {
       onConnect: () => {
         if (!current()) { stop(); return }
         setConnectionStatus('Online')
-        void queryClientRef.current.invalidateQueries({ queryKey: ['merchant-orders'] })
+        void invalidateMerchantOrders(queryClientRef.current, scope)
         subscribe()
       },
       onWebSocketClose: () => {
@@ -343,7 +396,7 @@ export const MerchantOrdersPage: React.FC = () => {
       else stop()
     }, 0)
     return stop
-  }, [token, userId])
+  }, [token, userId, scope])
 
   useEffect(() => { syncRooms.current?.() }, [restaurantId, restaurants])
 

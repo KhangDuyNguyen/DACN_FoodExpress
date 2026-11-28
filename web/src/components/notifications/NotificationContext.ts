@@ -1,7 +1,13 @@
 import { createContext, useContext } from 'react'
+import type { MerchantOrderScope } from '../../pages/merchant/merchantOrderQueries'
 import type { NotificationItem } from '../../api/notifications'
 
 export type Center = {
+  merchantSession?: {
+    scope: MerchantOrderScope
+    current: () => boolean
+    reject: (status: 401 | 403) => void
+  }
   role: 'CUSTOMER' | 'MERCHANT'
   allowOrderPopup: (orderId: unknown) => boolean
   valid: boolean
