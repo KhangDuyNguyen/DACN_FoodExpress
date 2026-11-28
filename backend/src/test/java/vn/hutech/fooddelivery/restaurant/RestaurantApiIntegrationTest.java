@@ -245,4 +245,19 @@ class RestaurantApiIntegrationTest {
         mockMvc.perform(get("/api/merchant/restaurants"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void merchantMenuCategoriesRequireRestaurantOwnership() throws Exception {
+        long id = restaurantId(COM_NHA_Q1);
+        String categories = "/api/merchant/restaurants/{id}/categories";
+
+        mockMvc.perform(get(categories, id)
+                        .header("Authorization", "Bearer " + loginAndGetToken("0922000001")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+
+        mockMvc.perform(get(categories, id)
+                        .header("Authorization", "Bearer " + loginAndGetToken("0922000002")))
+                .andExpect(status().isForbidden());
+    }
 }

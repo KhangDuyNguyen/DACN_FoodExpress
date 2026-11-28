@@ -28,7 +28,7 @@ public class MerchantMenuRepository {
         String sql = """
             SELECT COUNT(*) FROM restaurants r
             JOIN merchants m ON m.id = r.merchant_id
-            WHERE r.id = :restaurantId AND m.user_id = :ownerUserId
+            WHERE r.id = :restaurantId AND m.owner_user_id = :ownerUserId
             """;
         Integer count = jdbc.queryForObject(sql,
                 new MapSqlParameterSource()
